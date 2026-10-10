@@ -1,0 +1,59 @@
+{
+    "name": "semperton/workerman",
+    "description": "Serves PSR-15 applications with Workerman.",
+    "type": "library",
+    "keywords": [
+        "workerman",
+        "psr-7",
+        "psr-15",
+        "psr-17",
+        "server",
+        "long-running"
+    ],
+    "license": "MIT",
+    "support": {
+        "issues": "https://github.com/semperton/workerman/issues",
+        "source": "https://github.com/semperton/workerman"
+    },
+    "autoload": {
+        "psr-4": {
+            "Semperton\\Workerman\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Semperton\\Workerman\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit",
+        "check": [
+            "psalm --no-cache",
+            "php-cs-fixer check"
+        ],
+        "fix": "php-cs-fixer fix"
+    },
+    "require": {
+        "php": "^8.2",
+        "ext-pcntl": "*",
+        "ext-posix": "*",
+        "psr/http-factory": "^1.1",
+        "psr/http-message": "^2.0",
+        "psr/http-server-handler": "^1.0",
+        "psr/log": "^2.0 || ^3.0",
+        "workerman/workerman": "^5.2.3"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "nyholm/psr7": "^1.8.2",
+        "phpunit/phpunit": "^11.5",
+        "vimeo/psalm": "^6.0"
+    },
+    "suggest": {
+        "ext-event": "Faster event loop with many connections",
+        "nyholm/psr7": "Fast PSR-7 / PSR-17 implementation"
+    }
+}
