@@ -29,6 +29,7 @@ use function trim;
  *
  * Bodies of known size up to 2 MB are sent at once, larger or unknown sized ones are streamed
  * and wait for the client to read (backpressure), the connection receives no further requests meanwhile
+ * A PushStream body is sent as the application pushes it
  * A body that ends before its announced length closes the connection, so the client notices
  * Exceptions are only thrown before anything was sent, so the caller can still send an error response
  *
@@ -83,7 +84,8 @@ final class ResponseSender
             $contentLength = self::length($response->getHeaderLine('Content-Length'));
         } elseif ($status !== 204) {
             $size = $body->getSize();
-            $contentLength = $size ?? self::length($response->getHeaderLine('Content-Length'));
+            // the length of a push is unknown, whatever the header says
+            $contentLength = $size ?? ($body instanceof PushStream ? null : self::length($response->getHeaderLine('Content-Length')));
             // http/1.0 has no chunked encoding, closing the connection ends the body
             $chunked = $contentLength === null && !$http10;
             $keepAlive = $keepAlive && ($contentLength !== null || $chunked);
@@ -122,6 +124,16 @@ final class ResponseSender
         $head .= "\r\n";
 
         $withBody = $method !== 'HEAD' && $status !== 204 && $status !== 304;
+
+        if ($body instanceof PushStream) {
+            if ($withBody) {
+                $this->push($connection, $head, $body, $chunked, $keepAlive);
+                return;
+            }
+            // e.g. a HEAD request, nothing is pushed
+            $body->close();
+        }
+
         $writable = $connection->getSendBufferQueueSize() < $connection->maxSendBufferSize;
 
         // fast path, everything fits into the send buffer
@@ -163,18 +175,7 @@ final class ResponseSender
         $remaining = $length;
         $connection->pauseRecv();
 
-        $finish = static function (TcpConnection $connection, bool $complete) use ($body, $keepAlive): void {
-            $connection->onBufferDrain = null;
-            $body?->close();
-
-            if ($complete && $keepAlive) {
-                $connection->resumeRecv();
-            } else {
-                self::close($connection);
-            }
-        };
-
-        $write = function (TcpConnection $connection) use (&$pending, &$remaining, $body, $chunked, $finish): void {
+        $write = function (TcpConnection $connection) use (&$pending, &$remaining, $body, $chunked, $keepAlive): void {
             try {
                 while ($connection->getStatus() === TcpConnection::STATUS_ESTABLISHED) {
                     // continued by onBufferDrain, once the client has read the buffered data
@@ -184,7 +185,7 @@ final class ResponseSender
 
                     if ($pending === '') {
                         if ($body === null || $remaining === 0) {
-                            $finish($connection, true);
+                            self::finish($connection, $body, true, $keepAlive);
                             return;
                         }
 
@@ -196,7 +197,7 @@ final class ResponseSender
                             } elseif ($remaining !== null) {
                                 $this->logger->warning('The response body is shorter than its Content-Length');
                             }
-                            $finish($connection, $remaining === null);
+                            self::finish($connection, $body, $remaining === null, $keepAlive);
                             return;
                         }
 
@@ -224,6 +225,53 @@ final class ResponseSender
 
         $connection->onBufferDrain = $write;
         $write($connection);
+    }
+
+    /**
+     * Sends the head and what was pushed so far, further pushes are sent right away
+     * There is no queue, a push is refused while the client doesn't read
+     */
+    private function push(TcpConnection $connection, string $head, PushStream $body, bool $chunked, bool $keepAlive): void
+    {
+        $frame = static fn(string $data): string => $chunked ? dechex(strlen($data)) . "\r\n" . $data . "\r\n" : $data;
+        $buffered = $body->getContents();
+
+        $connection->pauseRecv();
+        // the client is gone or doesn't read, e.g. earlier pipelined responses
+        if ($connection->send($buffered === '' ? $head : $head . $frame($buffered), true) === false) {
+            self::finish($connection, $body, false, $keepAlive);
+            return;
+        }
+
+        $connection->onClose = static function () use ($body): void {
+            $body->close();
+        };
+        $body->attach(
+            static fn(string $data): bool => $connection->send($frame($data), true) !== false,
+            static function (bool $complete) use ($connection, $body, $chunked, $keepAlive): void {
+                $connection->onClose = null;
+                if ($complete && $chunked) {
+                    $connection->send("0\r\n\r\n", true);
+                }
+                self::finish($connection, $body, $complete, $keepAlive);
+            },
+        );
+    }
+
+    /**
+     * Ends a streamed or pushed body, the connection receives further requests or is closed
+     */
+    private static function finish(TcpConnection $connection, ?StreamInterface $body, bool $complete, bool $keepAlive): void
+    {
+        $connection->onBufferDrain = null;
+
+        if ($complete && $keepAlive) {
+            $connection->resumeRecv();
+        } else {
+            self::close($connection);
+        }
+
+        $body?->close();
     }
 
     /**

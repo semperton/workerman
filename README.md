@@ -81,6 +81,29 @@ A body that is shorter than its size closes the connection, so the client notice
 
 The handler should render its errors, e.g. with an error middleware. Uncaught exceptions are logged and answered with an empty `500`, so are interim (`1xx`) responses.
 
+## Server-Sent Events
+
+A `PushStream` body is sent while the application pushes to it, e.g. from a timer or a subscription. The response is sent chunked and the connection receives no further requests until it ends.
+
+```php
+use Semperton\Workerman\PushStream;
+use Workerman\Timer;
+
+$stream = new PushStream();
+$timer = Timer::add(1.0, static fn() => $stream->push("data: " . time() . "\n\n"));
+// the client is gone, the stream has ended or the worker stops
+$stream->onClose(static fn() => Timer::del($timer));
+
+return new Response(200, ['Content-Type' => 'text/event-stream', 'Cache-Control' => 'no-cache'], $stream);
+```
+- `push()` returns `false` if the data was not taken: the stream is closed, or the client doesn't read (there is no queue, so a slow client can't fill the memory).
+- `end()` completes the body, `close()` aborts it and closes the connection.
+- The idle timeout applies, push something (e.g. a `:` comment) more often than `idleTimeout`, this also detects clients that are gone.
+- On reloads and restarts, push connections are closed like idle ones, `EventSource` clients reconnect.
+- Behind nginx, disable response buffering for the route, e.g. with an `X-Accel-Buffering: no` header.
+
+The handler must not block meanwhile, a worker handles one request at a time.
+
 ## Development
 
 The `FileMonitor` reloads the workers when a file changes:

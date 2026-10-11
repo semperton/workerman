@@ -7,11 +7,14 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Semperton\Workerman\HttpServer;
+use Semperton\Workerman\PushStream;
+use Workerman\Timer;
 use Workerman\Worker;
 
 /**
  * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout>
- * Responds with the pid of the worker, a 4 MB body for '/large' or the request body for '/echo'
+ * Responds with the pid of the worker, a 4 MB body for '/large', the request body for '/echo'
+ * or an event every 100 ms for '/events'
  */
 
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
@@ -33,8 +36,21 @@ $handler = new class implements RequestHandlerInterface {
         return match ($request->getUri()->getPath()) {
             '/large' => new Response(body: str_repeat('0123456789abcdef', 256 * 1024)),
             '/echo' => new Response(body: $request->getBody()),
+            '/events' => new Response(200, ['Content-Type' => 'text/event-stream'], $this->events()),
             default => new Response(body: (string) getmypid()),
         };
+    }
+
+    private function events(): PushStream
+    {
+        $stream = new PushStream();
+        $count = 0;
+        $timer = Timer::add(0.1, static function () use ($stream, &$count): void {
+            $stream->push('data: ' . ++$count . "\n\n");
+        });
+        $stream->onClose(static fn() => Timer::del($timer));
+
+        return $stream;
     }
 };
 

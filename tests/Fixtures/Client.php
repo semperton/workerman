@@ -11,6 +11,7 @@ use function feof;
 use function fread;
 use function fwrite;
 use function preg_match;
+use function str_contains;
 use function stream_set_timeout;
 use function stream_socket_client;
 use function strlen;
@@ -81,6 +82,21 @@ final class Client
         $this->buffer = substr($this->buffer, $pos + 4 + $length);
 
         return [$head, $body];
+    }
+
+    /**
+     * Reads until the data contains the needle, e.g. of a pushed body
+     */
+    public function readUntil(string $needle): string
+    {
+        while (!str_contains($this->buffer, $needle)) {
+            $this->buffer .= $this->chunk();
+        }
+
+        $data = $this->buffer;
+        $this->buffer = '';
+
+        return $data;
     }
 
     /**

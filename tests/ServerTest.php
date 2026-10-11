@@ -35,6 +35,7 @@ final class ServerTest extends TestCase
 {
     private const GET = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
     private const GET_LARGE = "GET /large HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    private const GET_EVENTS = "GET /events HTTP/1.1\r\nHost: localhost\r\n\r\n";
     private const LARGE = '0123456789abcdef';
 
     /** @var resource */
@@ -146,6 +147,36 @@ final class ServerTest extends TestCase
             self::assertSame('', $idle->readAll());
             self::assertTrue($idle->closed(), 'closed, not timed out');
             self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
+        } finally {
+            self::stop($process);
+        }
+    }
+
+    public function testPush(): void
+    {
+        $client = new Client(self::$port);
+        [$head] = $client->request(self::GET_EVENTS);
+
+        self::assertStringContainsString("\r\nTransfer-Encoding: chunked", $head);
+        // pushed every 100 ms, longer than the idle timeout of 2 s would allow without them
+        self::assertStringContainsString("data: 25\n\n", $client->readUntil("data: 25\n\n"));
+    }
+
+    public function testPushGracefulReload(): void
+    {
+        [$process, $port] = self::start();
+
+        try {
+            $events = new Client($port);
+            $events->write(self::GET_EVENTS);
+            $events->readUntil("data: 1\n\n");
+
+            posix_kill(proc_get_status($process)['pid'], SIGUSR2);
+
+            // closed, so the worker can exit, clients reconnect
+            $events->readAll();
+            self::assertTrue($events->closed());
+            self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", (new Client($port))->request(self::GET)[0]);
         } finally {
             self::stop($process);
         }
