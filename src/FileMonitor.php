@@ -14,13 +14,12 @@ use Workerman\Timer;
 use Workerman\Worker;
 
 use function clearstatcache;
-use function function_exists;
 use function is_dir;
 use function max;
 use function posix_getppid;
 use function posix_kill;
 
-use const SIGUSR1;
+use const SIGUSR2;
 
 /**
  * Development only, reloads the workers when a file changes
@@ -29,7 +28,8 @@ use const SIGUSR1;
 final class FileMonitor
 {
     /**
-     * @param list<string> $paths
+     * @param list<string> $paths directories, missing ones are skipped
+     * @param float $interval seconds between the checks
      */
     public function __construct(
         private readonly array $paths,
@@ -48,7 +48,7 @@ final class FileMonitor
 
     private function start(): void
     {
-        if (Worker::$daemonize || !function_exists('posix_kill')) {
+        if (Worker::$daemonize) {
             return;
         }
 
@@ -58,7 +58,8 @@ final class FileMonitor
             $modified = $this->lastModified();
             if ($modified > $lastModified) {
                 $lastModified = $modified;
-                posix_kill(posix_getppid(), SIGUSR1);
+                // gracefully, like 'reload -g', requests in progress complete
+                posix_kill(posix_getppid(), SIGUSR2);
             }
         });
     }
