@@ -7,6 +7,7 @@ namespace Semperton\Workerman\Tests;
 use Closure;
 use InvalidArgumentException;
 use Nyholm\Psr7\Response;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -89,11 +90,29 @@ final class HttpServerTest extends TestCase
         $this->server()->listen('https://0.0.0.0:8443');
     }
 
-    public function testInvalidStopTimeout(): void
+    /**
+     * @return iterable<string, array{Closure(HttpServer): mixed}>
+     */
+    public static function invalidOptions(): iterable
+    {
+        yield 'workers' => [static fn(HttpServer $server) => $server->listen(workers: 0)];
+        yield 'max body size' => [static fn(HttpServer $server) => $server->listen(maxBodySize: -1)];
+        yield 'max requests' => [static fn(HttpServer $server) => $server->listen(maxRequests: -1)];
+        yield 'idle timeout' => [static fn(HttpServer $server) => $server->listen(idleTimeout: -1)];
+        yield 'header timeout' => [static fn(HttpServer $server) => $server->listen(headerTimeout: -1)];
+        yield 'stop timeout' => [static fn(HttpServer $server) => $server->listen(stopTimeout: 0)];
+        yield 'negative stop timeout' => [static fn(HttpServer $server) => $server->listen(stopTimeout: -1)];
+    }
+
+    /**
+     * @param Closure(HttpServer): mixed $listen
+     */
+    #[DataProvider('invalidOptions')]
+    public function testInvalidOptions(Closure $listen): void
     {
         $this->expectException(InvalidArgumentException::class);
 
-        $this->server()->listen(stopTimeout: 0);
+        $listen($this->server());
     }
 
     public function testHandlerError(): void

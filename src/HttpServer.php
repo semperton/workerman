@@ -64,7 +64,9 @@ final class HttpServer
 
     /**
      * Can be called more than once, every worker process runs one of the returned workers with its own options
+     * The returned worker may be configured further, e.g. its user and group
      *
+     * @param int $workers worker processes, e.g. one per CPU core
      * @param int $maxBodySize requests with a larger body get a 413, the body is kept in memory
      * @param int $maxRequests a worker restarts after this many requests, limits slow memory leaks, 0 = never
      * @param float $idleTimeout seconds a connection may receive and send nothing, e.g. between keep-alive requests, 0 = never
@@ -82,6 +84,18 @@ final class HttpServer
     ): Worker {
         if (!str_starts_with($address, 'http://')) {
             throw new InvalidArgumentException("Invalid address < $address >, expected http://host:port");
+        }
+
+        if ($workers < 1) {
+            throw new InvalidArgumentException("Invalid workers < $workers >, expected at least 1");
+        }
+
+        if ($maxBodySize < 0 || $maxRequests < 0) {
+            throw new InvalidArgumentException("Invalid limits < $maxBodySize, $maxRequests >, expected 0 or more");
+        }
+
+        if ($idleTimeout < 0 || $headerTimeout < 0) {
+            throw new InvalidArgumentException("Invalid timeouts < $idleTimeout, $headerTimeout >, expected seconds or 0 = never");
         }
 
         // a stop has to end, e.g. a client that doesn't read would keep the old worker forever
