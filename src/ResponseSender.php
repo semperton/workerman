@@ -17,6 +17,7 @@ use function dechex;
 use function explode;
 use function gmdate;
 use function min;
+use function preg_match;
 use function strcasecmp;
 use function strlen;
 use function strtolower;
@@ -91,7 +92,13 @@ final class ResponseSender
             $keepAlive = $keepAlive && ($contentLength !== null || $chunked);
         }
 
-        $head = 'HTTP/1.1 ' . $status . ' ' . $response->getReasonPhrase() . "\r\n";
+        $reasonPhrase = $response->getReasonPhrase();
+        // e.g. a line break would end the status line, not every PSR-7 implementation validates it, rfc 9112 4
+        if (preg_match('/[^\t\x20-\x7e\x80-\xff]/', $reasonPhrase) === 1) {
+            $reasonPhrase = '';
+        }
+
+        $head = 'HTTP/1.1 ' . $status . ' ' . $reasonPhrase . "\r\n";
         $hasDate = false;
 
         foreach ($response->getHeaders() as $name => $values) {

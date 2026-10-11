@@ -58,6 +58,14 @@ final class ResponseSenderTest extends TestCase
         self::assertSame('', $body);
     }
 
+    public function testInvalidReasonPhrase(): void
+    {
+        [$head] = $this->send((new Response())->withStatus(200, "OK\r\nX-Injected: 1"));
+
+        self::assertStringStartsWith("HTTP/1.1 200 \r\n", $head);
+        self::assertStringNotContainsString('X-Injected', $head);
+    }
+
     public function testConnectionClose(): void
     {
         $socket = new SocketConnection();
