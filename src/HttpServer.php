@@ -73,7 +73,7 @@ final class HttpServer
     public function listen(
         string $address = 'http://0.0.0.0:8080',
         int $workers = 4,
-        int $maxBodySize = 10 * 1024 * 1024,
+        int $maxBodySize = 1024 * 1024,
         int $maxRequests = 0,
         float $idleTimeout = 60.0,
         float $headerTimeout = 20.0,

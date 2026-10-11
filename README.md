@@ -44,13 +44,16 @@ The handler is created in the workers, so database connections and other resourc
 $server->listen(
     'http://0.0.0.0:8080',
     workers: 4,                     // one per CPU core, 2 to 4 per core if requests wait for a database or API
-    maxBodySize: 10 * 1024 * 1024,  // larger bodies get a 413, the body is kept in memory
+    maxBodySize: 1024 * 1024,       // larger bodies get a 413, the body is kept in memory
     maxRequests: 0,                 // a worker restarts after this many requests, 0 = never
     idleTimeout: 60,                // seconds a connection may receive and send nothing, 0 = never
     headerTimeout: 20,              // seconds a client may take to send a request head, 0 = never
     stopTimeout: 30,                // seconds a stopping worker waits for its connections, then closes them
 );
 ```
+The whole request is kept in memory while it arrives, so `maxBodySize` limits the memory of every connection.
+The default of 1 MB is the default of nginx, raise both together for uploads, e.g. with `client_max_body_size 20m`.
+
 With `maxRequests`, the worker stops accepting connections and answers further requests with `Connection: close`.
 Idle keep-alive connections are closed, so the worker exits once its last response is sent, and Workerman starts a new one.
 This limits slow memory leaks without dropping requests.
