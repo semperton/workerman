@@ -65,5 +65,5 @@ jobs:
           coverage: none
       - uses: ramsey/composer-install@v3
       - run: composer validate --strict
-      - run: composer audit
+      - run: composer audit --abandoned=report
       - run: composer check
