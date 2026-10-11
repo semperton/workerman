@@ -9,20 +9,27 @@ use Psr\Http\Message\StreamInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Throwable;
+use UnexpectedValueException;
 use Workerman\Connection\TcpConnection;
 
+use function ctype_digit;
 use function dechex;
+use function explode;
 use function gmdate;
-use function str_contains;
+use function min;
+use function strcasecmp;
 use function strlen;
 use function strtolower;
+use function substr;
 use function time;
+use function trim;
 
 /**
  * Writes PSR-7 responses to Workerman connections
  *
  * Bodies of known size up to 2 MB are sent at once, larger or unknown sized ones are streamed
  * and wait for the client to read (backpressure), the connection receives no further requests meanwhile
+ * A body that ends before its announced length closes the connection, so the client notices
  * Exceptions are only thrown before anything was sent, so the caller can still send an error response
  *
  * @internal
@@ -41,6 +48,7 @@ final class ResponseSender
 
     /**
      * @param string $connectionHeader of the request
+     * @throws UnexpectedValueException for interim (1xx) responses
      */
     public function send(
         TcpConnection $connection,
@@ -49,16 +57,21 @@ final class ResponseSender
         string $protocolVersion,
         string $connectionHeader,
     ): void {
+        $status = $response->getStatusCode();
+        if ($status < 200) {
+            // e.g. 101 Switching Protocols, the connection can't be taken over
+            throw new UnexpectedValueException("Interim responses are not supported, got status < $status >");
+        }
+
         $http10 = $protocolVersion === '1.0';
         $keepAlive = $http10
-            ? str_contains(strtolower($connectionHeader), 'keep-alive')
-            : !str_contains(strtolower($connectionHeader), 'close');
+            ? self::hasToken($connectionHeader, 'keep-alive')
+            : !self::hasToken($connectionHeader, 'close');
 
-        if (str_contains(strtolower($response->getHeaderLine('Connection')), 'close')) {
+        if (self::hasToken($response->getHeaderLine('Connection'), 'close')) {
             $keepAlive = false;
         }
 
-        $status = $response->getStatusCode();
         $body = $response->getBody();
         $size = null;
         $contentLength = null;
@@ -66,34 +79,31 @@ final class ResponseSender
 
         // rfc 9112 6.3, message body length
         if ($status === 304) {
-            $contentLength = $response->getHeaderLine('Content-Length') ?: null;
-        } elseif ($status >= 200 && $status !== 204) {
+            // the length a 200 would have, there is no body
+            $contentLength = self::length($response->getHeaderLine('Content-Length'));
+        } elseif ($status !== 204) {
             $size = $body->getSize();
-            if ($size !== null) {
-                $contentLength = (string) $size;
-            } elseif ($response->hasHeader('Content-Length')) {
-                $contentLength = $response->getHeaderLine('Content-Length');
-            } elseif ($http10) {
-                // http/1.0 has no chunked encoding, closing the connection ends the body
-                $keepAlive = false;
-            } else {
-                $chunked = true;
-            }
+            $contentLength = $size ?? self::length($response->getHeaderLine('Content-Length'));
+            // http/1.0 has no chunked encoding, closing the connection ends the body
+            $chunked = $contentLength === null && !$http10;
+            $keepAlive = $keepAlive && ($contentLength !== null || $chunked);
         }
 
         $head = 'HTTP/1.1 ' . $status . ' ' . $response->getReasonPhrase() . "\r\n";
+        $hasDate = false;
 
         foreach ($response->getHeaders() as $name => $values) {
             $lowerName = strtolower((string) $name);
             if ($lowerName === 'content-length' || $lowerName === 'transfer-encoding' || $lowerName === 'connection') {
                 continue;
             }
+            $hasDate = $hasDate || $lowerName === 'date';
             foreach ($values as $value) {
                 $head .= $name . ': ' . $value . "\r\n";
             }
         }
 
-        if (!$response->hasHeader('Date')) {
+        if (!$hasDate) {
             $head .= 'Date: ' . $this->date() . "\r\n";
         }
 
@@ -111,34 +121,37 @@ final class ResponseSender
 
         $head .= "\r\n";
 
-        $withBody = $method !== 'HEAD' && $status >= 200 && $status !== 204 && $status !== 304;
+        $withBody = $method !== 'HEAD' && $status !== 204 && $status !== 304;
         $writable = $connection->getSendBufferQueueSize() < $connection->maxSendBufferSize;
 
         // fast path, everything fits into the send buffer
         if ($writable && (!$withBody || ($size !== null && $size <= self::BUFFER_LIMIT))) {
             if ($withBody) {
-                if ($body->isSeekable()) {
-                    $body->rewind();
-                }
-                $head .= $body->getContents();
+                $content = $this->contents($body, $size);
+                $keepAlive = $keepAlive && strlen($content) === $size;
+                $head .= $content;
             }
 
             $connection->send($head, true);
 
             if (!$keepAlive) {
-                $connection->close();
+                self::close($connection);
             }
 
             return;
         }
 
-        $this->stream($connection, $head, $withBody ? $body : null, $chunked, $keepAlive);
+        $this->stream($connection, $head, $withBody ? $body : null, $contentLength, $chunked, $keepAlive);
     }
 
+    /**
+     * @param ?int $length announced by Content-Length, null = until the end of the body
+     */
     private function stream(
         TcpConnection $connection,
         string $head,
         ?StreamInterface $body,
+        ?int $length,
         bool $chunked,
         bool $keepAlive,
     ): void {
@@ -147,20 +160,21 @@ final class ResponseSender
         }
 
         $pending = $head;
+        $remaining = $length;
         $connection->pauseRecv();
 
-        $finish = static function (TcpConnection $connection) use ($body, $keepAlive): void {
+        $finish = static function (TcpConnection $connection, bool $complete) use ($body, $keepAlive): void {
             $connection->onBufferDrain = null;
             $body?->close();
 
-            if ($keepAlive) {
+            if ($complete && $keepAlive) {
                 $connection->resumeRecv();
             } else {
-                $connection->close();
+                self::close($connection);
             }
         };
 
-        $write = function (TcpConnection $connection) use (&$pending, $body, $chunked, $finish): void {
+        $write = function (TcpConnection $connection) use (&$pending, &$remaining, $body, $chunked, $finish): void {
             try {
                 while ($connection->getStatus() === TcpConnection::STATUS_ESTABLISHED) {
                     // continued by onBufferDrain, once the client has read the buffered data
@@ -169,16 +183,26 @@ final class ResponseSender
                     }
 
                     if ($pending === '') {
-                        $data = $body === null || $body->eof() ? '' : $body->read(self::CHUNK_SIZE);
-
-                        if ($data === '') {
-                            if ($chunked && $body !== null) {
-                                $connection->send("0\r\n\r\n", true);
-                            }
-                            $finish($connection);
+                        if ($body === null || $remaining === 0) {
+                            $finish($connection, true);
                             return;
                         }
 
+                        $data = $body->eof() ? '' : $body->read($remaining === null ? self::CHUNK_SIZE : min(self::CHUNK_SIZE, $remaining));
+
+                        if ($data === '') {
+                            if ($chunked) {
+                                $connection->send("0\r\n\r\n", true);
+                            } elseif ($remaining !== null) {
+                                $this->logger->warning('The response body is shorter than its Content-Length');
+                            }
+                            $finish($connection, $remaining === null);
+                            return;
+                        }
+
+                        if ($remaining !== null) {
+                            $remaining -= strlen($data);
+                        }
                         $pending = $chunked ? dechex(strlen($data)) . "\r\n" . $data . "\r\n" : $data;
                     }
 
@@ -193,12 +217,76 @@ final class ResponseSender
                 // headers are already sent, closing is the only way to signal the error
                 $this->logger->error('Unable to stream the response body', ['exception' => $exception]);
                 $connection->onBufferDrain = null;
+                $body?->close();
                 $connection->close();
             }
         };
 
         $connection->onBufferDrain = $write;
         $write($connection);
+    }
+
+    /**
+     * The body cut to its announced size, a shorter one is logged
+     */
+    private function contents(StreamInterface $body, int $size): string
+    {
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+
+        $content = $body->getContents();
+        $length = strlen($content);
+
+        if ($length > $size) {
+            return substr($content, 0, $size);
+        }
+
+        if ($length < $size) {
+            $this->logger->warning('The response body is shorter than its size');
+        }
+
+        return $content;
+    }
+
+    /**
+     * Like nginx's lingering close: once everything is handed to the os and the client has sent nothing more,
+     * the connection is closed right away, lingering would keep every short connection for a second
+     * Otherwise it waits for the send buffer, then lingers, so a reset doesn't destroy the response
+     */
+    private static function close(TcpConnection $connection): void
+    {
+        if ($connection->getSendBufferQueueSize() === 0 && $connection->getRecvBufferQueueSize() === 0) {
+            $connection->close();
+        } else {
+            $connection->end();
+        }
+    }
+
+    /**
+     * Connection options are comma separated and case-insensitive, rfc 9110 7.6.1
+     */
+    private static function hasToken(string $header, string $token): bool
+    {
+        if ($header === '') {
+            return false;
+        }
+
+        foreach (explode(',', $header) as $value) {
+            if (strcasecmp(trim($value), $token) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A valid Content-Length header, rfc 9110 8.6
+     */
+    private static function length(string $header): ?int
+    {
+        return $header !== '' && ctype_digit($header) ? (int) $header : null;
     }
 
     private function date(): string

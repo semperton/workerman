@@ -7,17 +7,18 @@ namespace Semperton\Workerman\Tests\Fixtures;
 use Psr\Http\Message\StreamInterface;
 
 /**
- * A stream of unknown size, like a generated or proxied body
+ * A stream that reports the given size, unknown (null) like a generated or proxied body, or a wrong one
  */
-final class UnknownSizeStream implements StreamInterface
+final class ReportedSizeStream implements StreamInterface
 {
     public function __construct(
         private readonly StreamInterface $stream,
+        private readonly ?int $size = null,
     ) {}
 
     public function getSize(): ?int
     {
-        return null;
+        return $this->size;
     }
 
     public function __toString(): string

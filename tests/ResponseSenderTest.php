@@ -6,12 +6,15 @@ namespace Semperton\Workerman\Tests;
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\NullLogger;
+use Semperton\Workerman\HttpProtocol;
 use Semperton\Workerman\ResponseSender;
+use Semperton\Workerman\Tests\Fixtures\ReportedSizeStream;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
-use Semperton\Workerman\Tests\Fixtures\UnknownSizeStream;
+use UnexpectedValueException;
 use Workerman\Connection\TcpConnection;
 
 use function explode;
@@ -59,7 +62,114 @@ final class ResponseSenderTest extends TestCase
         [$head] = $this->split($socket->read());
 
         self::assertStringContainsString("\r\nConnection: close", $head);
+        self::assertTrue($socket->ended());
+    }
+
+    public function testCloseImmediately(): void
+    {
+        $socket = new SocketConnection();
+        $this->sender()->send($socket->connection, new Response(200, [], 'hello'), 'GET', '1.1', 'close');
+
+        // nothing to wait for, lingering would keep the connection
         self::assertSame(TcpConnection::STATUS_CLOSED, $socket->connection->getStatus());
+    }
+
+    public function testCloseGracefully(): void
+    {
+        $socket = new SocketConnection();
+        $socket->connection->protocol = HttpProtocol::class;
+        $socket->connection->onMessage = static function (): void {};
+        // a pipelined request, which won't be answered
+        $socket->write("GET /next HTTP/1.1\r\n");
+
+        $this->sender()->send($socket->connection, new Response(200, [], 'hello'), 'GET', '1.1', 'close');
+
+        // the client may still be sending, a close would reset the connection and could destroy the response
+        self::assertSame(TcpConnection::STATUS_ENDING, $socket->connection->getStatus());
+        self::assertStringEndsWith("\r\n\r\nhello", $socket->read());
+        self::assertTrue($socket->ended());
+    }
+
+    public function testConnectionTokens(): void
+    {
+        $socket = new SocketConnection();
+        $this->sender()->send($socket->connection, new Response(200, [], 'hello'), 'GET', '1.1', 'Upgrade, Close');
+        $socket->read();
+        self::assertTrue($socket->ended());
+
+        // not the close option
+        $socket = new SocketConnection();
+        $this->sender()->send($socket->connection, new Response(200, [], 'hello'), 'GET', '1.1', 'x-closed');
+        $socket->read();
+        self::assertFalse($socket->ended());
+    }
+
+    public function testInterimResponse(): void
+    {
+        $socket = new SocketConnection();
+
+        try {
+            $this->sender()->send($socket->connection, new Response(100), 'GET', '1.1', '');
+            self::fail('Expected an exception');
+        } catch (UnexpectedValueException) {
+            self::assertSame('', $socket->read(), 'nothing sent');
+        }
+    }
+
+    public function testInvalidContentLength(): void
+    {
+        $body = new ReportedSizeStream(Stream::create('hello'));
+        [$head, $body] = $this->send(new Response(200, ['Content-Length' => '5x'], $body));
+
+        self::assertStringContainsString("\r\nTransfer-Encoding: chunked", $head);
+        self::assertStringNotContainsString('Content-Length', $head);
+        self::assertSame('hello', $this->decodeChunked($body));
+    }
+
+    public function testContentLengthOfUnknownSize(): void
+    {
+        $body = new ReportedSizeStream(Stream::create('hello'));
+        [$head, $body] = $this->send(new Response(200, ['Content-Length' => '5'], $body));
+
+        self::assertStringContainsString("\r\nContent-Length: 5", $head);
+        self::assertSame('hello', $body);
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function sizes(): iterable
+    {
+        yield 'sent at once' => [1024];
+        yield 'streamed' => [3 * 1024 * 1024];
+    }
+
+    #[DataProvider('sizes')]
+    public function testShorterBody(int $size): void
+    {
+        $content = str_repeat('a', $size);
+        $socket = new SocketConnection();
+        $response = new Response(200, [], new ReportedSizeStream(Stream::create($content), $size + 10));
+        $this->sender()->send($socket->connection, $response, 'GET', '1.1', '');
+        [$head, $body] = $this->split($socket->read());
+
+        // the client notices the incomplete body, as the connection is closed
+        self::assertStringContainsString('Content-Length: ' . ($size + 10), $head);
+        self::assertSame($content, $body);
+        self::assertTrue($socket->ended());
+    }
+
+    #[DataProvider('sizes')]
+    public function testLongerBody(int $size): void
+    {
+        $content = str_repeat('a', $size);
+        $socket = new SocketConnection();
+        $response = new Response(200, [], new ReportedSizeStream(Stream::create($content . 'too long'), $size));
+        $this->sender()->send($socket->connection, $response, 'GET', '1.1', '');
+        [, $body] = $this->split($socket->read());
+
+        self::assertSame($content, $body);
+        self::assertFalse($socket->ended());
     }
 
     public function testHttp10KeepAlive(): void
@@ -75,7 +185,7 @@ final class ResponseSenderTest extends TestCase
     public function testChunked(): void
     {
         $content = str_repeat('0123456789', 10_000);
-        $response = new Response(200, [], new UnknownSizeStream(Stream::create($content)));
+        $response = new Response(200, [], new ReportedSizeStream(Stream::create($content)));
         [$head, $body] = $this->send($response);
 
         self::assertStringContainsString("\r\nTransfer-Encoding: chunked", $head);
@@ -86,14 +196,14 @@ final class ResponseSenderTest extends TestCase
     public function testHttp10UnknownSize(): void
     {
         $socket = new SocketConnection();
-        $response = new Response(200, [], new UnknownSizeStream(Stream::create('hello')));
+        $response = new Response(200, [], new ReportedSizeStream(Stream::create('hello')));
         $this->sender()->send($socket->connection, $response, 'GET', '1.0', 'keep-alive');
         [$head, $body] = $this->split($socket->read());
 
         self::assertStringNotContainsString('Transfer-Encoding', $head);
         self::assertStringContainsString("\r\nConnection: close", $head);
         self::assertSame('hello', $body);
-        self::assertSame(TcpConnection::STATUS_CLOSED, $socket->connection->getStatus());
+        self::assertTrue($socket->ended());
     }
 
     public function testBackpressure(): void
