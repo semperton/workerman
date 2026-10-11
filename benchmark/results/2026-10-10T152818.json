@@ -1,0 +1,777 @@
+{
+    "date": "2026-10-10T14:59:19+00:00",
+    "machine": {
+        "cpu": "AMD Ryzen 7 2700X Eight-Core Processor",
+        "kernel": "6.18.40.1-microsoft-standard-WSL2",
+        "docker": "29.8.1",
+        "server_cpus": "0-3",
+        "client_cpus": "8-11"
+    },
+    "settings": {
+        "duration": 10,
+        "rounds": 3,
+        "warmup": 5
+    },
+    "targets": {
+        "semperton-event": {
+            "scenarios": {
+                "plaintext": {
+                    "requests": 702103,
+                    "duration_us": 10044414,
+                    "rps": 69899.8,
+                    "p50_us": 902,
+                    "p90_us": 1398,
+                    "p99_us": 2315,
+                    "max_us": 4380,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "plaintext-256": {
+                    "requests": 713699,
+                    "duration_us": 10081540,
+                    "rps": 70792.7,
+                    "p50_us": 3403,
+                    "p90_us": 5956,
+                    "p99_us": 9171,
+                    "max_us": 20178,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "json": {
+                    "requests": 518335,
+                    "duration_us": 10036117,
+                    "rps": 51647,
+                    "p50_us": 1141,
+                    "p90_us": 1921,
+                    "p99_us": 3029,
+                    "max_us": 9017,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "form": {
+                    "requests": 593147,
+                    "duration_us": 10100333,
+                    "rps": 58725.5,
+                    "p50_us": 961,
+                    "p90_us": 1657,
+                    "p99_us": 2632,
+                    "max_us": 8456,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "close": {
+                    "requests": 355905,
+                    "duration_us": 10100056,
+                    "rps": 35237.9,
+                    "p50_us": 1530,
+                    "p90_us": 1885,
+                    "p99_us": 2258,
+                    "max_us": 10154,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                }
+            },
+            "memory_mb": 19.9,
+            "probes": {
+                "Pipelining": "yes",
+                "Expect: 100-continue": "yes, 0 ms",
+                "Chunked request body": "yes",
+                "HEAD without body": "yes",
+                "Content-Length + Transfer-Encoding": "rejected, 400",
+                "Invalid header value": "400",
+                "Header of 32 KB": "431",
+                "Slow head (slowloris)": "408 after 20 s"
+            }
+        },
+        "semperton-select": {
+            "scenarios": {
+                "plaintext": {
+                    "requests": 711850,
+                    "duration_us": 10100184,
+                    "rps": 70478.9,
+                    "p50_us": 838,
+                    "p90_us": 1230,
+                    "p99_us": 2035,
+                    "max_us": 5521,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "plaintext-256": {
+                    "requests": 720927,
+                    "duration_us": 10093755,
+                    "rps": 71423.1,
+                    "p50_us": 3317,
+                    "p90_us": 4567,
+                    "p99_us": 6205,
+                    "max_us": 15816,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "json": {
+                    "requests": 525923,
+                    "duration_us": 10020494,
+                    "rps": 52484.7,
+                    "p50_us": 1135,
+                    "p90_us": 1811,
+                    "p99_us": 2871,
+                    "max_us": 6201,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "form": {
+                    "requests": 612827,
+                    "duration_us": 10100191,
+                    "rps": 60674.8,
+                    "p50_us": 966,
+                    "p90_us": 1421,
+                    "p99_us": 2383,
+                    "max_us": 8131,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "close": {
+                    "requests": 392360,
+                    "duration_us": 10042080,
+                    "rps": 39071.6,
+                    "p50_us": 1206,
+                    "p90_us": 1629,
+                    "p99_us": 2013,
+                    "max_us": 41361,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                }
+            },
+            "memory_mb": 19.4,
+            "probes": {
+                "Pipelining": "yes",
+                "Expect: 100-continue": "yes, 0 ms",
+                "Chunked request body": "yes",
+                "HEAD without body": "yes",
+                "Content-Length + Transfer-Encoding": "rejected, 400",
+                "Invalid header value": "400",
+                "Header of 32 KB": "431",
+                "Slow head (slowloris)": "408 after 20 s"
+            }
+        },
+        "workerman": {
+            "scenarios": {
+                "plaintext": {
+                    "requests": 1994582,
+                    "duration_us": 10015447,
+                    "rps": 199150.6,
+                    "p50_us": 277,
+                    "p90_us": 575,
+                    "p99_us": 987,
+                    "max_us": 5040,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "plaintext-256": {
+                    "requests": 2241932,
+                    "duration_us": 10091661,
+                    "rps": 222156.9,
+                    "p50_us": 1062,
+                    "p90_us": 1826,
+                    "p99_us": 2839,
+                    "max_us": 11182,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "json": {
+                    "requests": 1580903,
+                    "duration_us": 10100409,
+                    "rps": 156518.7,
+                    "p50_us": 369,
+                    "p90_us": 664,
+                    "p99_us": 1115,
+                    "max_us": 8402,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "form": {
+                    "requests": 1748754,
+                    "duration_us": 10028911,
+                    "rps": 174371.3,
+                    "p50_us": 329,
+                    "p90_us": 611,
+                    "p99_us": 1013,
+                    "max_us": 3932,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "close": {
+                    "requests": 315218,
+                    "duration_us": 10017500,
+                    "rps": 31466.7,
+                    "p50_us": 670,
+                    "p90_us": 1434,
+                    "p99_us": 1941,
+                    "max_us": 12432,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                }
+            },
+            "memory_mb": 18.5,
+            "probes": {
+                "Pipelining": "yes",
+                "Expect: 100-continue": "no, clients wait (curl: 1 s)",
+                "Chunked request body": "yes",
+                "HEAD without body": "no, 13 bytes",
+                "Content-Length + Transfer-Encoding": "rejected, 400",
+                "Invalid header value": "200",
+                "Header of 32 KB": "431",
+                "Slow head (slowloris)": "open after 25 s"
+            }
+        },
+        "swoole": {
+            "scenarios": {
+                "plaintext": {
+                    "requests": 553457,
+                    "duration_us": 10028090,
+                    "rps": 55190.7,
+                    "p50_us": 1180,
+                    "p90_us": 1717,
+                    "p99_us": 2830,
+                    "max_us": 9324,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "plaintext-256": {
+                    "requests": 575570,
+                    "duration_us": 10096094,
+                    "rps": 57009.2,
+                    "p50_us": 4501,
+                    "p90_us": 6208,
+                    "p99_us": 7909,
+                    "max_us": 17182,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "json": {
+                    "requests": 439664,
+                    "duration_us": 10100279,
+                    "rps": 43529.9,
+                    "p50_us": 1337,
+                    "p90_us": 2293,
+                    "p99_us": 3877,
+                    "max_us": 8635,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "form": {
+                    "requests": 478389,
+                    "duration_us": 10034521,
+                    "rps": 47674.3,
+                    "p50_us": 1143,
+                    "p90_us": 2296,
+                    "p99_us": 3749,
+                    "max_us": 10476,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "close": {
+                    "requests": 325322,
+                    "duration_us": 10029972,
+                    "rps": 32435,
+                    "p50_us": 994,
+                    "p90_us": 2061,
+                    "p99_us": 3515,
+                    "max_us": 13349,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                }
+            },
+            "memory_mb": 33.1,
+            "probes": {
+                "Pipelining": "yes",
+                "Expect: 100-continue": "yes, 0 ms",
+                "Chunked request body": "yes",
+                "HEAD without body": "no, 13 bytes",
+                "Content-Length + Transfer-Encoding": "rejected, 400",
+                "Invalid header value": "400",
+                "Header of 32 KB": "200",
+                "Slow head (slowloris)": "open after 25 s"
+            }
+        },
+        "roadrunner": {
+            "scenarios": {
+                "plaintext": {
+                    "requests": 118825,
+                    "duration_us": 10023677,
+                    "rps": 11854.4,
+                    "p50_us": 5294,
+                    "p90_us": 6473,
+                    "p99_us": 7812,
+                    "max_us": 12711,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "plaintext-256": {
+                    "requests": 118532,
+                    "duration_us": 10072112,
+                    "rps": 11768.3,
+                    "p50_us": 21625,
+                    "p90_us": 24066,
+                    "p99_us": 26423,
+                    "max_us": 32626,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "json": {
+                    "requests": 76815,
+                    "duration_us": 10023677,
+                    "rps": 7663.4,
+                    "p50_us": 8229,
+                    "p90_us": 9723,
+                    "p99_us": 11434,
+                    "max_us": 19490,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "form": {
+                    "requests": 91088,
+                    "duration_us": 10038357,
+                    "rps": 9074,
+                    "p50_us": 6927,
+                    "p90_us": 8320,
+                    "p99_us": 9898,
+                    "max_us": 19108,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "close": {
+                    "requests": 83338,
+                    "duration_us": 10024037,
+                    "rps": 8313.8,
+                    "p50_us": 7460,
+                    "p90_us": 9080,
+                    "p99_us": 11372,
+                    "max_us": 19169,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                }
+            },
+            "memory_mb": 150.5,
+            "probes": {
+                "Pipelining": "yes",
+                "Expect: 100-continue": "yes, 0 ms",
+                "Chunked request body": "yes",
+                "HEAD without body": "yes",
+                "Content-Length + Transfer-Encoding": "accepted, kept open, 200",
+                "Invalid header value": "400",
+                "Header of 32 KB": "200",
+                "Slow head (slowloris)": "open after 25 s"
+            }
+        },
+        "frankenphp": {
+            "scenarios": {
+                "plaintext": {
+                    "requests": 108547,
+                    "duration_us": 10011234,
+                    "rps": 10842.5,
+                    "p50_us": 5811,
+                    "p90_us": 10668,
+                    "p99_us": 14649,
+                    "max_us": 24055,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "plaintext-256": {
+                    "requests": 108193,
+                    "duration_us": 10076861,
+                    "rps": 10736.8,
+                    "p50_us": 23458,
+                    "p90_us": 32685,
+                    "p99_us": 41345,
+                    "max_us": 64462,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "json": {
+                    "requests": 114931,
+                    "duration_us": 10018475,
+                    "rps": 11471.9,
+                    "p50_us": 5535,
+                    "p90_us": 9442,
+                    "p99_us": 12463,
+                    "max_us": 18676,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "form": {
+                    "requests": 118218,
+                    "duration_us": 10099812,
+                    "rps": 11705,
+                    "p50_us": 5229,
+                    "p90_us": 7393,
+                    "p99_us": 12982,
+                    "max_us": 24008,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "close": {
+                    "requests": 89204,
+                    "duration_us": 10029398,
+                    "rps": 8894.3,
+                    "p50_us": 6923,
+                    "p90_us": 9687,
+                    "p99_us": 12642,
+                    "max_us": 27828,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                }
+            },
+            "memory_mb": 53.4,
+            "probes": {
+                "Pipelining": "yes",
+                "Expect: 100-continue": "yes, 0 ms",
+                "Chunked request body": "yes",
+                "HEAD without body": "yes",
+                "Content-Length + Transfer-Encoding": "accepted, kept open, 200",
+                "Invalid header value": "400",
+                "Header of 32 KB": "431",
+                "Slow head (slowloris)": "open after 25 s"
+            }
+        },
+        "reactphp": {
+            "scenarios": {
+                "plaintext": {
+                    "requests": 483823,
+                    "duration_us": 10100205,
+                    "rps": 47902.3,
+                    "p50_us": 1282,
+                    "p90_us": 1801,
+                    "p99_us": 2383,
+                    "max_us": 6820,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "plaintext-256": {
+                    "requests": 468594,
+                    "duration_us": 10085955,
+                    "rps": 46460.1,
+                    "p50_us": 5295,
+                    "p90_us": 7459,
+                    "p99_us": 9936,
+                    "max_us": 19465,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "json": {
+                    "requests": 401405,
+                    "duration_us": 10100250,
+                    "rps": 39742.1,
+                    "p50_us": 1494,
+                    "p90_us": 2512,
+                    "p99_us": 3528,
+                    "max_us": 8923,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "form": {
+                    "requests": 284063,
+                    "duration_us": 10100050,
+                    "rps": 28124.9,
+                    "p50_us": 2165,
+                    "p90_us": 3114,
+                    "p99_us": 4665,
+                    "max_us": 12843,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "close": {
+                    "requests": 227252,
+                    "duration_us": 10100701,
+                    "rps": 22498.6,
+                    "p50_us": 2416,
+                    "p90_us": 7044,
+                    "p99_us": 11198,
+                    "max_us": 24946,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                }
+            },
+            "memory_mb": 31.8,
+            "probes": {
+                "Pipelining": "yes",
+                "Expect: 100-continue": "yes, 0 ms",
+                "Chunked request body": "yes",
+                "HEAD without body": "yes",
+                "Content-Length + Transfer-Encoding": "rejected, 400",
+                "Invalid header value": "400",
+                "Header of 32 KB": "431",
+                "Slow head (slowloris)": "open after 25 s"
+            }
+        },
+        "nginx-fpm": {
+            "scenarios": {
+                "plaintext": {
+                    "requests": 123602,
+                    "duration_us": 10099876,
+                    "rps": 12238,
+                    "p50_us": 5145,
+                    "p90_us": 5871,
+                    "p99_us": 6671,
+                    "max_us": 12405,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "plaintext-256": {
+                    "requests": 120698,
+                    "duration_us": 10083715,
+                    "rps": 11969.6,
+                    "p50_us": 20966,
+                    "p90_us": 23144,
+                    "p99_us": 26754,
+                    "max_us": 32615,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "json": {
+                    "requests": 112981,
+                    "duration_us": 10099618,
+                    "rps": 11186.7,
+                    "p50_us": 5596,
+                    "p90_us": 6496,
+                    "p99_us": 7707,
+                    "max_us": 15591,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "form": {
+                    "requests": 117434,
+                    "duration_us": 10022222,
+                    "rps": 11717.4,
+                    "p50_us": 5361,
+                    "p90_us": 6178,
+                    "p99_us": 7282,
+                    "max_us": 15463,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                },
+                "close": {
+                    "requests": 107107,
+                    "duration_us": 10029633,
+                    "rps": 10679.1,
+                    "p50_us": 5786,
+                    "p90_us": 7061,
+                    "p99_us": 8694,
+                    "max_us": 14075,
+                    "errors": {
+                        "connect": 0,
+                        "read": 0,
+                        "write": 0,
+                        "status": 0,
+                        "timeout": 0
+                    }
+                }
+            },
+            "memory_mb": 22.3,
+            "probes": {
+                "Pipelining": "yes",
+                "Expect: 100-continue": "yes, 0 ms",
+                "Chunked request body": "yes",
+                "HEAD without body": "yes",
+                "Content-Length + Transfer-Encoding": "rejected, 400",
+                "Invalid header value": "500",
+                "Header of 32 KB": "400",
+                "Slow head (slowloris)": "open after 25 s"
+            }
+        }
+    }
+}

@@ -7,3 +7,6 @@
 /composer.lock		export-ignore
 /phpunit.xml.dist	export-ignore
 /.github		export-ignore
+/benchmark		export-ignore
+/phpbench.json		export-ignore
+/.dockerignore		export-ignore

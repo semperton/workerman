@@ -1,0 +1,86 @@
+# One server at a time is started by run.php, all listen on 127.0.0.1:8080 (host network)
+# The servers share SERVER_CPUS, wrk runs on CLIENT_CPUS, so they don't compete
+
+name: php-server-bench
+
+x-server: &server
+  network_mode: host
+  cpuset: ${SERVER_CPUS:-0-3}
+  ulimits:
+    nofile: 65536
+  stop_grace_period: 2s
+
+x-cli: &cli
+  context: ..
+  dockerfile: benchmark/servers/cli.Dockerfile
+
+services:
+  semperton-select:
+    <<: *server
+    build: { <<: *cli, args: { SERVER: semperton } }
+    image: php-server-bench/semperton
+    environment: { EVENT_LOOP: select }
+    command: php server.php start
+
+  semperton-event:
+    <<: *server
+    build: { <<: *cli, args: { SERVER: semperton } }
+    image: php-server-bench/semperton
+    environment: { EVENT_LOOP: event }
+    command: php server.php start
+
+  workerman:
+    <<: *server
+    build: { <<: *cli, args: { SERVER: workerman } }
+    image: php-server-bench/workerman
+    command: php server.php start
+
+  reactphp:
+    <<: *server
+    build: { <<: *cli, args: { SERVER: reactphp } }
+    image: php-server-bench/reactphp
+    command: php server.php
+
+  roadrunner:
+    <<: *server
+    build: { <<: *cli, args: { SERVER: roadrunner } }
+    image: php-server-bench/roadrunner
+    command: rr serve -c .rr.yaml
+
+  swoole:
+    <<: *server
+    build: { context: .., dockerfile: benchmark/servers/swoole/Dockerfile }
+    image: php-server-bench/swoole
+    command: php server.php
+
+  frankenphp:
+    <<: *server
+    build: { context: .., dockerfile: benchmark/servers/frankenphp/Dockerfile }
+    image: php-server-bench/frankenphp
+
+  php-fpm:
+    <<: *server
+    build: { context: .., dockerfile: benchmark/servers/nginx-fpm/Dockerfile }
+    image: php-server-bench/php-fpm
+    volumes: [fpm-socket:/run/php]
+
+  nginx-fpm:
+    <<: *server
+    image: nginx:1.31.6-alpine
+    volumes:
+      - fpm-socket:/run/php
+      - ./servers/nginx-fpm/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [php-fpm]
+
+  wrk:
+    build: wrk
+    image: php-server-bench/wrk
+    profiles: [tools]
+    network_mode: host
+    cpuset: ${CLIENT_CPUS:-8-11}
+    ulimits:
+      nofile: 65536
+    volumes: [./wrk:/scripts:ro]
+
+volumes:
+  fpm-socket:

@@ -1,0 +1,12 @@
+{
+    "require": {
+        "nyholm/psr7": "1.8.2",
+        "semperton/workerman": "*@dev"
+    },
+    "repositories": [
+        {"type": "path", "url": "../lib", "options": {"symlink": false}}
+    ],
+    "autoload": {
+        "psr-4": {"Bench\\": "../app/"}
+    }
+}

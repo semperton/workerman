@@ -1,0 +1,7 @@
+# the benchmark images only need src/, composer.json and benchmark/
+*
+!composer.json
+!src
+!benchmark/app
+!benchmark/php.ini
+!benchmark/servers

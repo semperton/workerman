@@ -1,0 +1,10 @@
+{
+    "require": {
+        "nyholm/psr7": "1.8.2",
+        "psr/http-server-handler": "1.0.2",
+        "react/http": "1.11.1"
+    },
+    "autoload": {
+        "psr-4": {"Bench\\": "../app/"}
+    }
+}

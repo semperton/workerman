@@ -1,0 +1,13 @@
+version: "3"
+
+server:
+  command: "php worker.php"
+
+http:
+  address: 0.0.0.0:8080
+  pool:
+    num_workers: 8
+
+logs:
+  mode: production
+  level: error
