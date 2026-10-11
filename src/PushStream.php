@@ -7,6 +7,7 @@ namespace Semperton\Workerman;
 use Closure;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;
+use Throwable;
 
 use function strlen;
 use function substr;
@@ -62,6 +63,7 @@ final class PushStream implements StreamInterface
     /**
      * Called once the stream is closed: the client is gone, the body has ended or the worker stops
      * e.g. to remove timers and subscriptions
+     * Every listener is called, the first exception is thrown afterwards, or logged if the client is gone
      *
      * @param Closure(): void $listener
      */
@@ -104,8 +106,18 @@ final class PushStream implements StreamInterface
 
         $listeners = $this->closeListeners;
         $this->closeListeners = [];
+        $error = null;
+        // e.g. a timer that keeps pushing would never be removed
         foreach ($listeners as $listener) {
-            $listener();
+            try {
+                $listener();
+            } catch (Throwable $exception) {
+                $error ??= $exception;
+            }
+        }
+
+        if ($error !== null) {
+            throw $error;
         }
     }
 

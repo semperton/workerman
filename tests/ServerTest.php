@@ -131,6 +131,20 @@ final class ServerTest extends TestCase
         self::assertSame($pid, (new Client(self::$port))->request(self::GET)[1], 'the worker is still running');
     }
 
+    public function testPushListenerError(): void
+    {
+        [, $pid] = (new Client(self::$port))->request(self::GET);
+
+        $events = new Client(self::$port);
+        $events->write("GET /events-error HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        $events->readUntil("data: 1\n\n");
+        // the listener throws once the client is gone
+        unset($events);
+        usleep(200_000);
+
+        self::assertSame($pid, (new Client(self::$port))->request(self::GET)[1], 'the worker is still running');
+    }
+
     public function testHeaderTimeout(): void
     {
         $client = new Client(self::$port);

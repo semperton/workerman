@@ -243,13 +243,23 @@ final class ResponseSender
             return;
         }
 
-        $connection->onClose = static function () use ($body): void {
-            $body->close();
+        // e.g. set by the application on the worker
+        $onClose = $connection->onClose;
+        $connection->onClose = function (TcpConnection $connection) use ($body, $onClose): void {
+            try {
+                $body->close();
+            } catch (Throwable $exception) {
+                // workerman would stop the worker, with all its connections
+                $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+            }
+            if ($onClose !== null) {
+                $onClose($connection);
+            }
         };
         $body->attach(
             static fn(string $data): bool => $connection->send($frame($data), true) !== false,
-            static function (bool $complete) use ($connection, $body, $chunked, $keepAlive): void {
-                $connection->onClose = null;
+            static function (bool $complete) use ($connection, $body, $chunked, $keepAlive, $onClose): void {
+                $connection->onClose = $onClose;
                 if ($complete && $chunked) {
                     $connection->send("0\r\n\r\n", true);
                 }

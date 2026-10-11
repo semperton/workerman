@@ -6,6 +6,7 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use RuntimeException;
 use Semperton\Workerman\HttpServer;
 use Semperton\Workerman\PushStream;
 use Semperton\Workerman\WorkerLifecycle;
@@ -15,7 +16,8 @@ use Workerman\Worker;
 /**
  * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout> <stopTimeout>
  * Responds with the pid of the worker, a 4 MB body for '/large', the request body for '/echo',
- * an event every 100 ms for '/events', or whether workerStopping() was called for '/stopping'
+ * an event every 100 ms for '/events' ('/events-error' throws once the client is gone),
+ * or whether workerStopping() was called for '/stopping'
  * workerStopping() writes the pid of the worker to <tmp>/semperton-workerman-<port>.stopping
  */
 
@@ -46,6 +48,7 @@ $handler = new class ($files . '.stopping') implements RequestHandlerInterface, 
             '/large' => new Response(body: str_repeat('0123456789abcdef', 256 * 1024)),
             '/echo' => new Response(body: $request->getBody()),
             '/events' => new Response(200, ['Content-Type' => 'text/event-stream'], $this->events()),
+            '/events-error' => new Response(200, ['Content-Type' => 'text/event-stream'], $this->events(fail: true)),
             '/stopping' => new Response(body: $this->stopping ? 'yes' : 'no'),
             default => new Response(body: (string) getmypid()),
         };
@@ -59,9 +62,12 @@ $handler = new class ($files . '.stopping') implements RequestHandlerInterface, 
         file_put_contents($this->stoppingFile, (string) getmypid());
     }
 
-    private function events(): PushStream
+    private function events(bool $fail = false): PushStream
     {
         $stream = new PushStream();
+        if ($fail) {
+            $stream->onClose(static fn() => throw new RuntimeException('Failed'));
+        }
         $count = 0;
         $timer = Timer::add(0.1, static function () use ($stream, &$count): void {
             $stream->push('data: ' . ++$count . "\n\n");

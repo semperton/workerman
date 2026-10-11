@@ -10,9 +10,11 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\NullLogger;
+use RuntimeException;
 use Semperton\Workerman\HttpProtocol;
 use Semperton\Workerman\PushStream;
 use Semperton\Workerman\ResponseSender;
+use Semperton\Workerman\Tests\Fixtures\ArrayLogger;
 use Semperton\Workerman\Tests\Fixtures\ReportedSizeStream;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use UnexpectedValueException;
@@ -357,6 +359,47 @@ final class ResponseSenderTest extends TestCase
         self::assertSame(TcpConnection::STATUS_CLOSED, $socket->connection->getStatus());
         self::assertTrue($closed);
         self::assertFalse($stream->push('data: a'));
+    }
+
+    public function testPushCloseListenerError(): void
+    {
+        $closed = false;
+        $stream = new PushStream();
+        $stream->onClose(static fn() => throw new RuntimeException('Failed'));
+        $stream->onClose(static function () use (&$closed): void {
+            $closed = true;
+        });
+
+        $connectionClosed = false;
+        $logger = new ArrayLogger();
+        $socket = new SocketConnection();
+        // e.g. set by the application on the worker
+        $socket->connection->onClose = static function () use (&$connectionClosed): void {
+            $connectionClosed = true;
+        };
+        (new ResponseSender($logger))->send($socket->connection, new Response(200, [], $stream), 'GET', '1.1', '');
+        $socket->read();
+        $socket->close();
+        // workerman would stop the worker if it was thrown
+        $socket->write('');
+
+        self::assertSame(TcpConnection::STATUS_CLOSED, $socket->connection->getStatus());
+        self::assertTrue($closed, 'every listener is called');
+        self::assertTrue($connectionClosed, 'the callback of the application is kept');
+        self::assertSame(['Failed'], $logger->messages);
+    }
+
+    public function testPushKeepsOnClose(): void
+    {
+        $stream = new PushStream();
+        $onClose = static function (): void {};
+
+        $socket = new SocketConnection();
+        $socket->connection->onClose = $onClose;
+        $this->sender()->send($socket->connection, new Response(200, [], $stream), 'GET', '1.1', '');
+        $stream->end();
+
+        self::assertSame($onClose, $socket->connection->onClose);
     }
 
     public function testPushClosed(): void
