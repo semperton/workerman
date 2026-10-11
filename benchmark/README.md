@@ -147,7 +147,7 @@ _2026-10-10, AMD Ryzen 7 2700X Eight-Core Processor, kernel 6.18.40.1-microsoft-
 
 ## Micro benchmarks
 
-[micro/](micro/) contains [phpbench](https://phpbench.readthedocs.io) benchmarks for the request conversion and response sending of this library, which help when optimising its hot path:
+[micro/](micro/) contains [phpbench](https://phpbench.readthedocs.io) benchmarks for the request conversion and response sending of this library, which help when optimising its hot path. They run with OPcache and the tracing JIT, like the servers:
 
 ```
 composer bench
