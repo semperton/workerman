@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Semperton\Workerman\HttpProtocol;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 
+use function str_repeat;
 use function strlen;
 
 final class HttpProtocolTest extends TestCase
@@ -53,6 +54,24 @@ final class HttpProtocolTest extends TestCase
         $head = "POST / HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 2048\r\n\r\n";
 
         self::assertSame(0, HttpProtocol::input($head, $socket->connection));
+        self::assertStringStartsWith('HTTP/1.1 413 ', $socket->read());
+    }
+
+    #[TestWith(["FFFFFFFF\r\n"], 'large chunk')]
+    #[TestWith(["1\r\na\r\n0\r\n" . "X-Trailer: a\r\n"], 'endless trailers')]
+    public function testChunkedTooLarge(string $start): void
+    {
+        $socket = new SocketConnection();
+        $socket->connection->maxPackageSize = 1024;
+        $buffer = "POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n" . $start;
+
+        while (strlen($buffer) <= 1024) {
+            self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
+            self::assertSame('', $socket->read());
+            $buffer .= $start === "FFFFFFFF\r\n" ? str_repeat('a', 100) : "X-Trailer: a\r\n";
+        }
+
+        self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
         self::assertStringStartsWith('HTTP/1.1 413 ', $socket->read());
     }
 

@@ -18,12 +18,14 @@ use function substr;
  * Workerman's HTTP protocol, delegated to and extended by:
  * - "Expect: 100-continue", clients like curl wait a second for it before sending larger bodies
  * - the time a request head started to arrive, slow heads are answered with a 408 by ConnectionTimeouts
+ * - the size limit for chunked bodies, Workerman only checks it once a chunk is complete
  *
  * @internal
  */
 final class HttpProtocol
 {
     private const CONTINUE = "HTTP/1.1 100 Continue\r\n\r\n";
+    private const TOO_LARGE = "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 
     /**
      * Called for every read until the request is complete, returns its length or 0 if unknown yet
@@ -43,6 +45,16 @@ final class HttpProtocol
 
         $length = Http::input($buffer, $connection);
         $bufferLength = strlen($buffer);
+
+        // e.g. a large chunk or endless trailers would be buffered without limit
+        if (
+            $length === 0
+            && $bufferLength > $connection->maxPackageSize
+            && $connection->getStatus() === TcpConnection::STATUS_ESTABLISHED
+        ) {
+            $connection->end(self::TOO_LARGE, true);
+            return 0;
+        }
 
         // only the head has arrived, the body is announced (0 = chunked), and Http rejected nothing
         if (

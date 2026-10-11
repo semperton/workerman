@@ -117,6 +117,20 @@ final class ServerTest extends TestCase
         self::assertStringStartsWith('HTTP/1.1 413 Payload Too Large', $client->readAll());
     }
 
+    public function testChunkedBodyTooLarge(): void
+    {
+        [, $pid] = (new Client(self::$port))->request(self::GET);
+
+        // one large chunk, the limit would only be checked once it is complete
+        $client = new Client(self::$port);
+        $client->write("POST /echo HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\nFFFFFFFF\r\n");
+        $client->write(str_repeat('a', 32 * 1024));
+
+        self::assertStringStartsWith('HTTP/1.1 413 Payload Too Large', $client->readAll());
+        self::assertTrue($client->closed(), 'closed, not timed out');
+        self::assertSame($pid, (new Client(self::$port))->request(self::GET)[1], 'the worker is still running');
+    }
+
     public function testHeaderTimeout(): void
     {
         $client = new Client(self::$port);
