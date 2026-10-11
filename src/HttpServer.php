@@ -95,9 +95,12 @@ final class HttpServer
         $worker->count = $workers;
         // workers share one socket, so stopping workers doesn't drop queued connections
         $worker->reusePort = false;
-        $worker->onWorkerStart = function (Worker $worker) use ($maxBodySize, $maxRequests, $idleTimeout, $headerTimeout, $stopTimeout): void {
-            // workerman limits the whole request, the head is limited separately
-            TcpConnection::$defaultMaxPackageSize = $maxBodySize + self::MAX_HEAD_SIZE;
+        // workerman limits the whole request, the head is limited separately
+        // per connection, the default would also limit other connections of the worker, e.g. clients of databases
+        $worker->onConnect = static function (TcpConnection $connection) use ($maxBodySize): void {
+            $connection->maxPackageSize = $maxBodySize + self::MAX_HEAD_SIZE;
+        };
+        $worker->onWorkerStart = function (Worker $worker) use ($maxRequests, $idleTimeout, $headerTimeout, $stopTimeout): void {
             $this->maxRequests = $maxRequests;
             $this->stopTimeout = $stopTimeout;
             $this->timeouts = new ConnectionTimeouts($idleTimeout, $headerTimeout);

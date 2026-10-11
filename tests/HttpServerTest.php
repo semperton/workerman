@@ -124,8 +124,11 @@ final class HttpServerTest extends TestCase
             $socket = new SocketConnection();
             self::assertNotNull($worker->onWorkerStart);
             ($worker->onWorkerStart)($worker);
-            // the body limit plus the head
-            self::assertSame(1024 + 16 * 1024, TcpConnection::$defaultMaxPackageSize);
+            self::assertNotNull($worker->onConnect);
+            ($worker->onConnect)($socket->connection);
+            // the body limit plus the head, only for the connections of the worker
+            self::assertSame(1024 + 16 * 1024, $socket->connection->maxPackageSize);
+            self::assertSame($defaultMaxPackageSize, TcpConnection::$defaultMaxPackageSize);
 
             $server->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
             self::assertStringNotContainsString('Connection: close', $socket->read());
@@ -137,7 +140,6 @@ final class HttpServerTest extends TestCase
             pcntl_signal_dispatch();
             self::assertTrue($stopped);
         } finally {
-            TcpConnection::$defaultMaxPackageSize = $defaultMaxPackageSize;
             pcntl_signal(SIGQUIT, SIG_DFL);
         }
     }
