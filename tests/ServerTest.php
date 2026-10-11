@@ -131,6 +131,13 @@ final class ServerTest extends TestCase
         self::assertSame($pid, (new Client(self::$port))->request(self::GET)[1], 'the worker is still running');
     }
 
+    public function testUnderscoreHost(): void
+    {
+        [$head] = (new Client(self::$port))->request("GET / HTTP/1.1\r\nHost: my_app:8080\r\n\r\n");
+
+        self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $head);
+    }
+
     public function testPushListenerError(): void
     {
         [, $pid] = (new Client(self::$port))->request(self::GET);

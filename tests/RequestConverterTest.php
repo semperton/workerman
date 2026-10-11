@@ -45,6 +45,15 @@ final class RequestConverterTest extends TestCase
         self::assertNull($request->getParsedBody());
     }
 
+    public function testUnderscoreHost(): void
+    {
+        // e.g. a container name, behind the reverse proxy
+        $request = $this->convert("GET /hello HTTP/1.1\r\nHost: my_app~1:8080\r\n\r\n");
+
+        self::assertSame('http://my_app~1:8080/hello', (string) $request->getUri());
+        self::assertSame('my_app~1', $request->getServerParams()['SERVER_NAME']);
+    }
+
     public function testIpv6(): void
     {
         $connection = (new SocketConnection('[::1]:50000'))->connection;

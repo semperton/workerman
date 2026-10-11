@@ -73,9 +73,9 @@ final class RequestConverter
             throw new InvalidArgumentException('Missing host');
         }
 
-        // e.g. 'a#' or 'a?' would change the path of the uri
+        // e.g. 'a#' or 'a?' would change the path of the uri, '_' is common in container names, rfc 3986 3.2.2
         if (
-            preg_match('/^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::(\d{1,5}))?$/i', $host, $matches) !== 1
+            preg_match('/^(\[[0-9a-f:.]+\]|[a-z0-9._~-]+)(?::(\d{1,5}))?$/i', $host, $matches) !== 1
             || (int) ($matches[2] ?? 0) > 65535
         ) {
             throw new InvalidArgumentException("Invalid host < $host >");
