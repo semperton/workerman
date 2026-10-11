@@ -6,6 +6,7 @@ namespace Semperton\Workerman;
 
 use Closure;
 use InvalidArgumentException;
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -17,6 +18,7 @@ use Workerman\Worker;
 
 use function posix_getpid;
 use function posix_kill;
+use function register_shutdown_function;
 use function str_starts_with;
 use function substr;
 
@@ -36,6 +38,7 @@ final class HttpServer
 
     private readonly ResponseSender $responseSender;
     private ?RequestHandlerInterface $handler = null;
+    private ?WorkerLifecycle $lifecycle = null;
     private ?ConnectionTimeouts $timeouts = null;
     private int $maxRequests = 0;
     private int $requests = 0;
@@ -87,6 +90,8 @@ final class HttpServer
             $this->maxRequests = $maxRequests;
             $this->timeouts = new ConnectionTimeouts($idleTimeout, $headerTimeout);
             Timer::add(1.0, fn() => $this->checkConnections($worker));
+            // the process exits once its connections are closed, requests may still arrive after onWorkerStop
+            register_shutdown_function($this->workerStopping(...));
             // create the handler at start, so errors show up early
             $this->handler();
         };
@@ -105,9 +110,7 @@ final class HttpServer
     public function handle(TcpConnection $connection, Request $request): void
     {
         if ($this->maxRequests > 0 && ++$this->requests === $this->maxRequests) {
-            // workerman stops the worker gracefully, the master starts a new one
-            $this->draining = true;
-            posix_kill(posix_getpid(), SIGQUIT);
+            $this->drain();
         }
 
         try {
@@ -133,6 +136,39 @@ final class HttpServer
             $this->logger->error($exception->getMessage(), ['exception' => $exception]);
             $connection->end(self::SERVER_ERROR, true);
         }
+
+        $this->requestHandled($serverRequest);
+    }
+
+    private function requestHandled(ServerRequestInterface $request): void
+    {
+        try {
+            $this->lifecycle?->requestHandled($request);
+        } catch (Throwable $exception) {
+            // the state of the application is unknown, a new worker starts clean
+            $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+            $this->drain();
+        }
+    }
+
+    /**
+     * Workerman stops the worker gracefully, the master starts a new one
+     */
+    private function drain(): void
+    {
+        if (!$this->draining) {
+            $this->draining = true;
+            posix_kill(posix_getpid(), SIGQUIT);
+        }
+    }
+
+    private function workerStopping(): void
+    {
+        try {
+            $this->lifecycle?->workerStopping();
+        } catch (Throwable $exception) {
+            $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+        }
     }
 
     private function checkConnections(Worker $worker): void
@@ -151,6 +187,11 @@ final class HttpServer
 
     private function handler(): RequestHandlerInterface
     {
-        return $this->handler ??= ($this->handlerFactory)();
+        if ($this->handler === null) {
+            $this->handler = ($this->handlerFactory)();
+            $this->lifecycle = $this->handler instanceof WorkerLifecycle ? $this->handler : null;
+        }
+
+        return $this->handler;
     }
 }

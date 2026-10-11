@@ -81,6 +81,33 @@ A body that is shorter than its size closes the connection, so the client notice
 
 The handler should render its errors, e.g. with an error middleware. Uncaught exceptions are logged and answered with an empty `500`, so are interim (`1xx`) responses.
 
+## Lifecycle
+
+The handler lives as long as its worker. It may implement `WorkerLifecycle` to reset its state after every request, and to clean up when the worker stops:
+
+```php
+use Semperton\Workerman\WorkerLifecycle;
+
+final class Application implements RequestHandlerInterface, WorkerLifecycle
+{
+    public function handle(ServerRequestInterface $request): ResponseInterface { /* ... */ }
+
+    public function requestHandled(ServerRequestInterface $request): void
+    {
+        $this->container->reset(); // e.g. identity maps, request scoped services
+    }
+
+    public function workerStopping(): void
+    {
+        $this->database->close();
+    }
+}
+```
+`requestHandled()` is called once the response was handed to the connection, streamed and pushed bodies are still being sent.
+If it throws, the error is logged and the worker restarts gracefully, as its state is unknown.
+
+`workerStopping()` is called when the worker process exits, after its last connection is closed (reload, restart, `maxRequests` or shutdown).
+
 ## Server-Sent Events
 
 A `PushStream` body is sent while the application pushes to it, e.g. from a timer or a subscription. The response is sent chunked and the connection receives no further requests until it ends.
@@ -124,6 +151,7 @@ composer bench  # phpbench micro benchmarks of the request conversion and respon
 ## Long-running processes
 
 - **Keep services stateless.** Handlers, middleware and services live as long as the worker. Request data must never end up in properties, use request attributes instead.
+  State that can't be avoided is reset with [`WorkerLifecycle`](#lifecycle).
 - **Expect long-lived connections to time out.** Reconnect on errors.
 - **Avoid blocking for long.** A worker handles one request at a time.
 

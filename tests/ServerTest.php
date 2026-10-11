@@ -9,6 +9,7 @@ use RuntimeException;
 use Semperton\Workerman\Tests\Fixtures\Client;
 
 use function fclose;
+use function file_get_contents;
 use function microtime;
 use function posix_kill;
 use function proc_close;
@@ -22,6 +23,7 @@ use function stream_socket_server;
 use function strrpos;
 use function substr;
 use function sys_get_temp_dir;
+use function unlink;
 use function usleep;
 
 use const PHP_BINARY;
@@ -203,6 +205,35 @@ final class ServerTest extends TestCase
             self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
         } finally {
             self::stop($process);
+        }
+    }
+
+    public function testWorkerStoppingAfterLastRequest(): void
+    {
+        [$process, $port] = self::start();
+        $stoppingFile = sys_get_temp_dir() . "/semperton-workerman-$port.stopping";
+
+        try {
+            [, $pid] = (new Client($port))->request(self::GET);
+
+            // the request is still arriving when the worker starts to stop
+            $client = new Client($port);
+            $client->write("POST /stopping HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\n\r\npi");
+            usleep(100_000);
+            posix_kill(proc_get_status($process)['pid'], SIGUSR2);
+            usleep(200_000);
+            $client->write('ng');
+
+            [$head, $body] = $client->response();
+            self::assertSame('no', $body, 'not stopping while requests are handled');
+            self::assertStringContainsString("\r\nConnection: close", $head);
+
+            // a new worker answers once the old one has exited
+            self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
+            self::assertSame($pid, @file_get_contents($stoppingFile), 'called when the worker exits');
+        } finally {
+            self::stop($process);
+            @unlink($stoppingFile);
         }
     }
 

@@ -11,12 +11,13 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Semperton\Workerman\HttpServer;
+use Semperton\Workerman\Tests\Fixtures\ArrayLogger;
+use Semperton\Workerman\Tests\Fixtures\LifecycleHandler;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
-use Stringable;
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http\Request;
 
@@ -90,15 +91,7 @@ final class HttpServerTest extends TestCase
 
     public function testHandlerError(): void
     {
-        $logger = new class extends AbstractLogger {
-            /** @var list<string> */
-            public array $messages = [];
-
-            public function log($level, string|Stringable $message, array $context = []): void
-            {
-                $this->messages[] = (string) $message;
-            }
-        };
+        $logger = new ArrayLogger();
 
         $socket = new SocketConnection();
         $server = $this->server(static fn() => throw new RuntimeException('Failed'), $logger);
@@ -142,10 +135,51 @@ final class HttpServerTest extends TestCase
         }
     }
 
+    public function testLifecycle(): void
+    {
+        $handler = new LifecycleHandler();
+        $server = new HttpServer(static fn() => $handler);
+        $worker = $server->listen();
+
+        $socket = new SocketConnection();
+        $server->handle($socket->connection, new Request("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        $server->handle($socket->connection, new Request("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+
+        // workerStopping() is called when the process exits, see ServerTest
+        self::assertNotNull($worker->onWorkerStop);
+        ($worker->onWorkerStop)($worker);
+        self::assertSame(['handled /a', 'handled /b'], $handler->calls());
+    }
+
+    public function testLifecycleError(): void
+    {
+        $stopped = false;
+        pcntl_signal(SIGQUIT, static function () use (&$stopped): void {
+            $stopped = true;
+        });
+
+        try {
+            $logger = new ArrayLogger();
+            $handler = new LifecycleHandler(new RuntimeException('Reset failed'));
+            $server = new HttpServer(static fn() => $handler, logger: $logger);
+
+            $socket = new SocketConnection();
+            $server->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+
+            // the response was sent before, the worker restarts
+            self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $socket->read());
+            self::assertSame(['Reset failed'], $logger->messages);
+            pcntl_signal_dispatch();
+            self::assertTrue($stopped);
+        } finally {
+            pcntl_signal(SIGQUIT, SIG_DFL);
+        }
+    }
+
     /**
      * @param ?callable(ServerRequestInterface): ResponseInterface $handle
      */
-    private function server(?callable $handle = null, ?AbstractLogger $logger = null): HttpServer
+    private function server(?callable $handle = null, ?LoggerInterface $logger = null): HttpServer
     {
         // responds with the method and path of the request by default
         $handle ??= static fn(ServerRequestInterface $request): ResponseInterface => new Response(
