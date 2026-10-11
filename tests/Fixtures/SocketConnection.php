@@ -7,8 +7,11 @@ namespace Semperton\Workerman\Tests\Fixtures;
 use RuntimeException;
 use Workerman\Connection\TcpConnection;
 use Workerman\Events\Select;
+use Workerman\Timer;
 
+use function feof;
 use function fread;
+use function fwrite;
 use function stream_select;
 use function stream_set_blocking;
 use function stream_socket_pair;
@@ -39,7 +42,10 @@ final class SocketConnection
         [$server, $this->client] = $sockets;
         stream_set_blocking($this->client, false);
 
-        $this->connection = new TcpConnection(new Select(), $server, $remoteAddress);
+        // the loop doesn't run, timers (e.g. of a graceful close) are only registered
+        $eventLoop = new Select();
+        Timer::init($eventLoop);
+        $this->connection = new TcpConnection($eventLoop, $server, $remoteAddress);
     }
 
     /**
@@ -48,6 +54,25 @@ final class SocketConnection
     public function close(): void
     {
         stream_socket_shutdown($this->client, STREAM_SHUT_RDWR);
+    }
+
+    /**
+     * The client sends data, the connection reads it like the event loop would
+     */
+    public function write(string $data): void
+    {
+        fwrite($this->client, $data);
+        /** @var resource $socket */
+        $socket = $this->connection->getSocket();
+        $this->connection->baseRead($socket);
+    }
+
+    /**
+     * The server has closed the connection, or at least its sending side, after all data was read
+     */
+    public function ended(): bool
+    {
+        return feof($this->client);
     }
 
     /**
