@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Semperton\Workerman;
 
 use InvalidArgumentException;
-use Psr\Http\Message\ServerRequestFactoryInterface;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Nyholm\Psr7\ServerRequest;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Message\StreamFactoryInterface;
-use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UploadedFileInterface;
 use WeakMap;
 use Workerman\Connection\TcpConnection;
@@ -32,6 +31,8 @@ use const UPLOAD_ERR_OK;
 /**
  * Converts Workerman requests to PSR-7 server requests, as PHP-FPM would populate them
  * Workerman requests may be cached and reused, so they are never modified
+ *
+ * Requests are built with nyholm/psr7 directly, PSR-17 factories would clone the request for every header
  */
 final class RequestConverter
 {
@@ -42,11 +43,11 @@ final class RequestConverter
      */
     private WeakMap $localAddresses;
 
-    public function __construct(
-        private readonly ServerRequestFactoryInterface $requestFactory,
-        private readonly StreamFactoryInterface $streamFactory,
-        private readonly UploadedFileFactoryInterface $uploadedFileFactory,
-    ) {
+    private readonly Psr17Factory $factory;
+
+    public function __construct()
+    {
+        $this->factory = new Psr17Factory();
         /** @var WeakMap<TcpConnection, array{string, int}> */
         $localAddresses = new WeakMap();
         $this->localAddresses = $localAddresses;
@@ -116,33 +117,16 @@ final class RequestConverter
             $serverParams['HTTPS'] = 'on';
         }
 
-        $serverRequest = $this->requestFactory
-            ->createServerRequest($method, $uri, $serverParams)
-            ->withProtocolVersion($protocol);
-
-        foreach ($headers as $name => $value) {
-            $serverRequest = $serverRequest->withHeader($name, $value);
-        }
+        // validates the headers, parses the query and creates the body stream lazily
+        $body = $request->rawBody();
+        $serverRequest = new ServerRequest($method, $uri, $headers, $body, $protocol, $serverParams);
 
         if (isset($headers['cookie'])) {
             $serverRequest = $serverRequest->withCookieParams($this->cookies($request));
         }
 
-        if ($request->queryString() !== '') {
-            /** @var array<string, mixed> $query */
-            $query = $request->get();
-            $serverRequest = $serverRequest->withQueryParams($query);
-        }
-
-        $body = $request->rawBody();
-        if ($body === '') {
-            return $serverRequest;
-        }
-
-        $serverRequest = $serverRequest->withBody($this->streamFactory->createStream($body));
-
         // like PHP-FPM, only form posts are parsed, other bodies are left to the application
-        if ($method !== 'POST') {
+        if ($body === '' || $method !== 'POST') {
             return $serverRequest;
         }
 
@@ -223,7 +207,7 @@ final class RequestConverter
     }
 
     /**
-     * Workerman removes the temporary file after the request
+     * Workerman removes the temporary file after the request, the opened stream keeps its contents readable
      *
      * @param array<array-key, mixed> $file
      */
@@ -240,10 +224,10 @@ final class RequestConverter
         }
 
         $stream = $error === UPLOAD_ERR_OK && $tmpName !== ''
-            ? $this->streamFactory->createStreamFromFile($tmpName)
-            : $this->streamFactory->createStream();
+            ? $this->factory->createStreamFromFile($tmpName)
+            : $this->factory->createStream();
 
-        return $this->uploadedFileFactory->createUploadedFile(
+        return $this->factory->createUploadedFile(
             $stream,
             $size,
             $error,

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Benchmark;
 
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Semperton\Workerman\RequestConverter;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Connection\TcpConnection;
@@ -39,8 +38,7 @@ final class RequestConverterBench
 
     public function __construct()
     {
-        $factory = new Psr17Factory();
-        $this->converter = new RequestConverter($factory, $factory, $factory);
+        $this->converter = new RequestConverter();
         $this->connection = (new SocketConnection())->connection;
     }
 

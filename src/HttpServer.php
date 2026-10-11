@@ -48,7 +48,7 @@ final class HttpServer
      */
     public function __construct(
         private readonly Closure $handlerFactory,
-        private readonly RequestConverter $requestConverter,
+        private readonly RequestConverter $requestConverter = new RequestConverter(),
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
         $this->responseSender = new ResponseSender($logger);

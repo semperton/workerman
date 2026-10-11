@@ -6,18 +6,15 @@ namespace Semperton\Workerman\Tests;
 
 use Closure;
 use InvalidArgumentException;
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\AbstractLogger;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Semperton\Workerman\HttpServer;
-use Semperton\Workerman\RequestConverter;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Stringable;
 use Workerman\Connection\TcpConnection;
@@ -62,17 +59,15 @@ final class HttpServerTest extends TestCase
     public function testConverterError(): void
     {
         // a bug, not a client error
-        $requestFactory = new class implements ServerRequestFactoryInterface {
-            public function createServerRequest(string $method, $uri, array $serverParams = []): ServerRequestInterface
+        $request = new class ("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n") extends Request {
+            public function rawBody(): string
             {
                 throw new RuntimeException('Failed');
             }
         };
-        $factory = new Psr17Factory();
-        $converter = new RequestConverter($requestFactory, $factory, $factory);
 
         $socket = new SocketConnection();
-        $this->server(converter: $converter)->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        $this->server()->handle($socket->connection, $request);
 
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
     }
@@ -150,7 +145,7 @@ final class HttpServerTest extends TestCase
     /**
      * @param ?callable(ServerRequestInterface): ResponseInterface $handle
      */
-    private function server(?callable $handle = null, ?AbstractLogger $logger = null, ?RequestConverter $converter = null): HttpServer
+    private function server(?callable $handle = null, ?AbstractLogger $logger = null): HttpServer
     {
         // responds with the method and path of the request by default
         $handle ??= static fn(ServerRequestInterface $request): ResponseInterface => new Response(
@@ -167,9 +162,6 @@ final class HttpServerTest extends TestCase
             }
         };
 
-        $factory = new Psr17Factory();
-        $converter ??= new RequestConverter($factory, $factory, $factory);
-
-        return new HttpServer(static fn() => $handler, $converter, $logger ?? new NullLogger());
+        return new HttpServer(static fn() => $handler, logger: $logger ?? new NullLogger());
     }
 }

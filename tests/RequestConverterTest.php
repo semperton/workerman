@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Semperton\Workerman\Tests;
 
 use InvalidArgumentException;
-use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ServerRequestInterface;
@@ -48,11 +47,9 @@ final class RequestConverterTest extends TestCase
 
     public function testIpv6(): void
     {
-        $factory = new Psr17Factory();
-        $converter = new RequestConverter($factory, $factory, $factory);
         $connection = (new SocketConnection('[::1]:50000'))->connection;
 
-        $request = $converter->convert(new Request("GET / HTTP/1.1\r\nHost: [::1]:8080\r\n\r\n"), $connection);
+        $request = (new RequestConverter())->convert(new Request("GET / HTTP/1.1\r\nHost: [::1]:8080\r\n\r\n"), $connection);
 
         self::assertSame('http://[::1]:8080/', (string) $request->getUri());
         self::assertSame('[::1]', $request->getServerParams()['SERVER_NAME']);
@@ -165,9 +162,6 @@ final class RequestConverterTest extends TestCase
 
     private function convert(string $buffer): ServerRequestInterface
     {
-        $factory = new Psr17Factory();
-        $converter = new RequestConverter($factory, $factory, $factory);
-
-        return $converter->convert(new Request($buffer), (new SocketConnection())->connection);
+        return (new RequestConverter())->convert(new Request($buffer), (new SocketConnection())->connection);
     }
 }

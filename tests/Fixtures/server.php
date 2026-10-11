@@ -2,13 +2,11 @@
 
 declare(strict_types=1);
 
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Semperton\Workerman\HttpServer;
-use Semperton\Workerman\RequestConverter;
 use Workerman\Worker;
 
 /**
@@ -40,8 +38,7 @@ $handler = new class implements RequestHandlerInterface {
     }
 };
 
-$factory = new Psr17Factory();
-$server = new HttpServer(static fn() => $handler, new RequestConverter($factory, $factory, $factory));
+$server = new HttpServer(static fn() => $handler);
 $server->listen(
     "http://127.0.0.1:$port",
     workers: 1,

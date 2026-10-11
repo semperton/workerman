@@ -15,23 +15,19 @@ Just use Composer:
 ```
 composer require semperton/workerman
 ```
-Requires PHP 8.2+, the `pcntl` and `posix` extensions (Linux / macOS) and any PSR-7 / PSR-17 implementation.
+Requires PHP 8.2+ and the `pcntl` and `posix` extensions (Linux / macOS).
+Requests are created with [nyholm/psr7](https://github.com/Nyholm/psr7), responses may come from any PSR-7 implementation.
 
 ## Usage
 
 ```php
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Semperton\Workerman\HttpServer;
-use Semperton\Workerman\RequestConverter;
 use Workerman\Worker;
-
-$factory = new Psr17Factory();
 
 $server = new HttpServer(
     // called in every worker, after the fork, returns any PSR-15 request handler
     static fn() => createApplication(),
-    new RequestConverter($factory, $factory, $factory),
-    $logger, // optional PSR-3 logger
+    logger: $logger, // optional PSR-3 logger
 );
 
 $server->listen('http://0.0.0.0:8080', workers: 4);
