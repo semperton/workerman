@@ -172,17 +172,14 @@ In production, run the server behind a reverse proxy that handles TLS, compressi
 
 ## Performance
 
-Requests per second for the same PSR-15 application on 4 CPU cores, compared with well-known PHP servers,
+Requests per second for the same PSR-15 application on 4 CPU cores,
 see [benchmark/](benchmark/README.md) for the method, all scenarios, latencies, memory and how each server handles HTTP edge cases.
 
 | Server | Plaintext | Browser-like GET | Form POST | New connection per request |
 |---|---:|---:|---:|---:|
+| Workerman, without PSR-7 | 199,151 | 156,519 | 174,371 | 31,467 |
 | **semperton/workerman** | **70,479** | **52,485** | **60,675** | **39,072** |
-| Swoole (PSR-7 bridge) | 55,191 | 43,530 | 47,674 | 32,435 |
-| ReactPHP | 47,902 | 39,742 | 28,125 | 22,499 |
 | nginx + PHP-FPM | 12,238 | 11,187 | 11,717 | 10,679 |
-| RoadRunner | 11,854 | 7,663 | 9,074 | 8,314 |
-| FrankenPHP (worker mode) | 10,843 | 11,472 | 11,705 | 8,894 |
 
 Workerman without PSR-7 serves about three times as many requests, which is the cost of creating PSR-7 objects for every request.
 With a real application, the time spent in the application and its I/O outweighs these differences.

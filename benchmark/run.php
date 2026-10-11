@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Benchmarks PHP servers running the same PSR-15 app, see README.md
  *
- * php benchmark/run.php [--targets=semperton-event,swoole] [--scenarios=plaintext,json]
+ * php benchmark/run.php [--targets=semperton-event,workerman] [--scenarios=plaintext,json]
  *                       [--duration=10] [--rounds=3] [--warmup=5] [--no-probes]
  *
  * Every target is started alone, warmed up, measured in rounds (the median by req/s is kept),
@@ -18,10 +18,6 @@ const TARGETS = [
     'semperton-event' => 'semperton/workerman (event)',
     'semperton-select' => 'semperton/workerman (select)',
     'workerman' => 'Workerman, without PSR-7',
-    'swoole' => 'Swoole',
-    'roadrunner' => 'RoadRunner',
-    'frankenphp' => 'FrankenPHP (worker mode)',
-    'reactphp' => 'ReactPHP',
     'nginx-fpm' => 'nginx + PHP-FPM',
 ];
 

@@ -35,29 +35,6 @@ services:
     image: php-server-bench/workerman
     command: php server.php start
 
-  reactphp:
-    <<: *server
-    build: { <<: *cli, args: { SERVER: reactphp } }
-    image: php-server-bench/reactphp
-    command: php server.php
-
-  roadrunner:
-    <<: *server
-    build: { <<: *cli, args: { SERVER: roadrunner } }
-    image: php-server-bench/roadrunner
-    command: rr serve -c .rr.yaml
-
-  swoole:
-    <<: *server
-    build: { context: .., dockerfile: benchmark/servers/swoole/Dockerfile }
-    image: php-server-bench/swoole
-    command: php server.php
-
-  frankenphp:
-    <<: *server
-    build: { context: .., dockerfile: benchmark/servers/frankenphp/Dockerfile }
-    image: php-server-bench/frankenphp
-
   php-fpm:
     <<: *server
     build: { context: .., dockerfile: benchmark/servers/nginx-fpm/Dockerfile }
