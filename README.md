@@ -48,6 +48,7 @@ $server->listen(
     maxRequests: 0,                 // a worker restarts after this many requests, 0 = never
     idleTimeout: 60,                // seconds a connection may receive and send nothing, 0 = never
     headerTimeout: 20,              // seconds a client may take to send a request head, 0 = never
+    stopTimeout: 30,                // seconds a stopping worker waits for its connections, then closes them
 );
 ```
 With `maxRequests`, the worker stops accepting connections and answers further requests with `Connection: close`.
@@ -63,6 +64,9 @@ Clients that trickle a request head (slowloris) get a `408` after `headerTimeout
 `php server.php reload -g` (or `restart -g`, `stop -g`) stops the workers gracefully: in-flight requests and streamed responses complete,
 idle keep-alive connections are closed, so the old workers exit within a second, and further responses carry `Connection: close`.
 The workers share one socket, so connections queued meanwhile are accepted by the new workers, none are dropped.
+
+Connections that are still busy after `stopTimeout`, e.g. long downloads or clients that don't read, are closed, so a stop always ends.
+Keep it below the time your process manager waits before it kills the server, e.g. `TimeoutStopSec` of systemd or the grace period of Kubernetes.
 
 ## Requests and responses
 

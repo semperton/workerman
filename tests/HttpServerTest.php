@@ -89,6 +89,13 @@ final class HttpServerTest extends TestCase
         $this->server()->listen('https://0.0.0.0:8443');
     }
 
+    public function testInvalidStopTimeout(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->server()->listen(stopTimeout: 0);
+    }
+
     public function testHandlerError(): void
     {
         $logger = new ArrayLogger();

@@ -20,6 +20,7 @@ use function str_repeat;
 use function stream_socket_client;
 use function stream_socket_get_name;
 use function stream_socket_server;
+use function strlen;
 use function strrpos;
 use function substr;
 use function sys_get_temp_dir;
@@ -237,10 +238,34 @@ final class ServerTest extends TestCase
         }
     }
 
+    public function testStopTimeout(): void
+    {
+        // without an idle timeout, only the stop timeout ends a client that doesn't read
+        [$process, $port] = self::start(idleTimeout: 0, stopTimeout: 1);
+
+        try {
+            [, $pid] = (new Client($port))->request(self::GET);
+
+            $busy = new Client($port);
+            $busy->write(self::GET_LARGE);
+            usleep(100_000);
+
+            posix_kill(proc_get_status($process)['pid'], SIGUSR2);
+            usleep(200_000);
+
+            // within the 5 s read timeout of the client
+            self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
+            self::assertLessThan(16 * 256 * 1024, strlen($busy->readAll()), 'the response was cut');
+            self::assertTrue($busy->closed());
+        } finally {
+            self::stop($process);
+        }
+    }
+
     /**
      * @return array{resource, int}
      */
-    private static function start(int $maxRequests = 0, float $idleTimeout = 60, float $headerTimeout = 20): array
+    private static function start(int $maxRequests = 0, float $idleTimeout = 60, float $headerTimeout = 20, float $stopTimeout = 30): array
     {
         // a free port, assigned by the os
         $socket = stream_socket_server('tcp://127.0.0.1:0');
@@ -253,7 +278,7 @@ final class ServerTest extends TestCase
 
         $output = ['file', sys_get_temp_dir() . "/semperton-workerman-$port.out", 'w'];
         $process = proc_open(
-            [PHP_BINARY, __DIR__ . '/Fixtures/server.php', 'start', (string) $port, (string) $maxRequests, (string) $idleTimeout, (string) $headerTimeout],
+            [PHP_BINARY, __DIR__ . '/Fixtures/server.php', 'start', (string) $port, (string) $maxRequests, (string) $idleTimeout, (string) $headerTimeout, (string) $stopTimeout],
             [['file', '/dev/null', 'r'], $output, $output],
             $pipes,
         );

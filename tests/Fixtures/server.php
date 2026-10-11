@@ -13,7 +13,7 @@ use Workerman\Timer;
 use Workerman\Worker;
 
 /**
- * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout>
+ * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout> <stopTimeout>
  * Responds with the pid of the worker, a 4 MB body for '/large', the request body for '/echo',
  * an event every 100 ms for '/events', or whether workerStopping() was called for '/stopping'
  * workerStopping() writes the pid of the worker to <tmp>/semperton-workerman-<port>.stopping
@@ -26,6 +26,7 @@ $port = (int) ($argv[2] ?? 8080);
 $maxRequests = (int) ($argv[3] ?? 0);
 $idleTimeout = (float) ($argv[4] ?? 60);
 $headerTimeout = (float) ($argv[5] ?? 20);
+$stopTimeout = (float) ($argv[6] ?? 30);
 
 $files = sys_get_temp_dir() . '/semperton-workerman-' . $port;
 Worker::$pidFile = $files . '.pid';
@@ -79,6 +80,7 @@ $server->listen(
     maxRequests: $maxRequests,
     idleTimeout: $idleTimeout,
     headerTimeout: $headerTimeout,
+    stopTimeout: $stopTimeout,
 );
 
 Worker::runAll();

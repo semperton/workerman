@@ -16,6 +16,7 @@ use Workerman\Protocols\Http\Request;
 use Workerman\Timer;
 use Workerman\Worker;
 
+use function microtime;
 use function posix_getpid;
 use function posix_kill;
 use function register_shutdown_function;
@@ -44,6 +45,9 @@ final class HttpServer
     private int $requests = 0;
     /** the worker stops, every response closes its connection and idle connections are closed */
     private bool $draining = false;
+    private float $stopTimeout = 0.0;
+    /** the time the worker started to stop, the remaining connections are closed after the stop timeout */
+    private ?float $stoppingSince = null;
 
     /**
      * @param Closure(): RequestHandlerInterface $handlerFactory called in every worker, after the fork,
@@ -64,6 +68,7 @@ final class HttpServer
      * @param int $maxRequests a worker restarts after this many requests, limits slow memory leaks, 0 = never
      * @param float $idleTimeout seconds a connection may receive and send nothing, e.g. between keep-alive requests, 0 = never
      * @param float $headerTimeout seconds a client may take to send a request head, slower ones get a 408, 0 = never
+     * @param float $stopTimeout seconds a stopping worker waits for its connections to finish, then closes them
      */
     public function listen(
         string $address = 'http://0.0.0.0:8080',
@@ -72,9 +77,15 @@ final class HttpServer
         int $maxRequests = 0,
         float $idleTimeout = 60.0,
         float $headerTimeout = 20.0,
+        float $stopTimeout = 30.0,
     ): Worker {
         if (!str_starts_with($address, 'http://')) {
             throw new InvalidArgumentException("Invalid address < $address >, expected http://host:port");
+        }
+
+        // a stop has to end, e.g. a client that doesn't read would keep the old worker forever
+        if ($stopTimeout <= 0) {
+            throw new InvalidArgumentException("Invalid stop timeout < $stopTimeout >, expected seconds > 0");
         }
 
         // tcp with the protocol set separately, as workerman would choose its own http protocol
@@ -84,10 +95,11 @@ final class HttpServer
         $worker->count = $workers;
         // workers share one socket, so stopping workers doesn't drop queued connections
         $worker->reusePort = false;
-        $worker->onWorkerStart = function (Worker $worker) use ($maxBodySize, $maxRequests, $idleTimeout, $headerTimeout): void {
+        $worker->onWorkerStart = function (Worker $worker) use ($maxBodySize, $maxRequests, $idleTimeout, $headerTimeout, $stopTimeout): void {
             // workerman limits the whole request, the head is limited separately
             TcpConnection::$defaultMaxPackageSize = $maxBodySize + self::MAX_HEAD_SIZE;
             $this->maxRequests = $maxRequests;
+            $this->stopTimeout = $stopTimeout;
             $this->timeouts = new ConnectionTimeouts($idleTimeout, $headerTimeout);
             Timer::add(1.0, fn() => $this->checkConnections($worker));
             // the process exits once its connections are closed, requests may still arrive after onWorkerStop
@@ -98,6 +110,7 @@ final class HttpServer
         // e.g. on a graceful reload, idle keep-alive connections would keep the worker alive
         $worker->onWorkerStop = function (): void {
             $this->draining = true;
+            $this->stoppingSince ??= microtime(true);
         };
         $worker->onMessage = $this->handle(...);
 
@@ -180,6 +193,13 @@ final class HttpServer
             if ($connection->worker === $worker) {
                 $connections[] = $connection;
             }
+        }
+
+        if ($this->stoppingSince !== null && microtime(true) - $this->stoppingSince >= $this->stopTimeout) {
+            foreach ($connections as $connection) {
+                $connection->destroy();
+            }
+            return;
         }
 
         $this->timeouts?->check($connections, $this->draining);
