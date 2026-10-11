@@ -115,6 +115,24 @@ final class HttpServerTest extends TestCase
         $listen($this->server());
     }
 
+    public function testLifecycleAfterError(): void
+    {
+        $handler = new LifecycleHandler(handleError: new RuntimeException('Failed'));
+        $server = new HttpServer(static fn() => $handler);
+
+        $socket = new SocketConnection();
+        $server->handle($socket->connection, new Request("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
+
+        // a client error, the handler wasn't called
+        $socket = new SocketConnection();
+        $server->handle($socket->connection, new Request("GET /b HTTP/1.1\r\nHost: a#\r\n\r\n"));
+        self::assertStringStartsWith("HTTP/1.1 400 Bad Request\r\n", $socket->read());
+
+        // the state may have changed before the error
+        self::assertSame(['handled /a'], $handler->calls());
+    }
+
     public function testHandlerError(): void
     {
         $logger = new ArrayLogger();

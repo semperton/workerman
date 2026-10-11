@@ -15,6 +15,7 @@ use Semperton\Workerman\HttpProtocol;
 use Semperton\Workerman\PushStream;
 use Semperton\Workerman\ResponseSender;
 use Semperton\Workerman\Tests\Fixtures\ArrayLogger;
+use Semperton\Workerman\Tests\Fixtures\FailingStream;
 use Semperton\Workerman\Tests\Fixtures\ReportedSizeStream;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use UnexpectedValueException;
@@ -26,6 +27,7 @@ use function str_repeat;
 use function strlen;
 use function strpos;
 use function substr;
+use function substr_count;
 
 final class ResponseSenderTest extends TestCase
 {
@@ -58,12 +60,79 @@ final class ResponseSenderTest extends TestCase
         self::assertSame('', $body);
     }
 
+    public function testNotModified(): void
+    {
+        $socket = new SocketConnection();
+        $this->sender()->send($socket->connection, new Response(304, ['Content-Length' => '5'], 'hello'), 'GET', '1.1', '');
+        [$head, $body] = $this->split($socket->read());
+
+        // the length a 200 would have
+        self::assertStringContainsString("\r\nContent-Length: 5", $head);
+        self::assertStringNotContainsString('Transfer-Encoding', $head);
+        self::assertSame('', $body);
+        self::assertSame(TcpConnection::STATUS_ESTABLISHED, $socket->connection->getStatus());
+    }
+
+    public function testFramingHeaders(): void
+    {
+        $date = 'Sun, 11 Oct 2026 12:00:00 GMT';
+        $response = new Response(200, ['Transfer-Encoding' => 'chunked', 'Content-Length' => '99', 'Date' => $date], 'hello');
+        [$head, $body] = $this->send($response);
+
+        // the server frames the body, the application's headers would contradict it
+        self::assertStringNotContainsString('Transfer-Encoding', $head);
+        self::assertStringContainsString("\r\nContent-Length: 5", $head);
+        self::assertStringNotContainsString('99', $head);
+        self::assertSame(1, substr_count($head, "\r\nDate: "));
+        self::assertStringContainsString("\r\nDate: $date", $head);
+        self::assertSame('hello', $body);
+    }
+
     public function testInvalidReasonPhrase(): void
     {
         [$head] = $this->send((new Response())->withStatus(200, "OK\r\nX-Injected: 1"));
 
         self::assertStringStartsWith("HTTP/1.1 200 \r\n", $head);
         self::assertStringNotContainsString('X-Injected', $head);
+    }
+
+    #[DataProvider('sizes')]
+    public function testRewind(int $size): void
+    {
+        $body = Stream::create(str_repeat('a', $size));
+        // e.g. read by a middleware
+        $body->getContents();
+
+        $socket = new SocketConnection();
+        $this->sender()->send($socket->connection, new Response(200, [], $body), 'GET', '1.1', '');
+        [, $data] = $this->split($socket->read());
+
+        self::assertSame($size, strlen($data));
+    }
+
+    public function testStreamError(): void
+    {
+        $body = new FailingStream(Stream::create(str_repeat('0123456789abcdef', 256 * 1024))); // 4 MB, streamed
+
+        $logger = new ArrayLogger();
+        $socket = new SocketConnection();
+        (new ResponseSender($logger))->send($socket->connection, new Response(200, [], $body), 'GET', '1.1', '');
+        $socket->read();
+
+        // the head is sent, closing is the only way to signal the error
+        self::assertNotSame(TcpConnection::STATUS_ESTABLISHED, $socket->connection->getStatus());
+        self::assertSame(['Unable to stream the response body'], $logger->messages);
+    }
+
+    public function testResponseConnectionClose(): void
+    {
+        $socket = new SocketConnection();
+        $this->sender()->send($socket->connection, new Response(200, ['Connection' => 'close'], 'hello'), 'GET', '1.1', 'keep-alive');
+        [$head] = $this->split($socket->read());
+
+        self::assertSame(1, substr_count($head, 'Connection:'));
+        self::assertStringContainsString("\r\nConnection: close", $head);
+        self::assertSame(TcpConnection::STATUS_CLOSED, $socket->connection->getStatus());
     }
 
     public function testConnectionClose(): void
