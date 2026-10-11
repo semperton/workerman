@@ -37,6 +37,7 @@ final class HttpServer
     private const BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     private const SERVER_ERROR = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 
+    private readonly RequestConverter $requestConverter;
     private readonly ResponseSender $responseSender;
     private ?RequestHandlerInterface $handler = null;
     private ?WorkerLifecycle $lifecycle = null;
@@ -55,9 +56,9 @@ final class HttpServer
      */
     public function __construct(
         private readonly Closure $handlerFactory,
-        private readonly RequestConverter $requestConverter = new RequestConverter(),
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
+        $this->requestConverter = new RequestConverter();
         $this->responseSender = new ResponseSender($logger);
     }
 

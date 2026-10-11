@@ -34,6 +34,8 @@ use const UPLOAD_ERR_OK;
  * Workerman requests may be cached and reused, so they are never modified
  *
  * Requests are built with nyholm/psr7 directly, PSR-17 factories would clone the request for every header
+ *
+ * @internal
  */
 final class RequestConverter
 {
