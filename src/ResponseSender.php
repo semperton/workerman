@@ -181,8 +181,9 @@ final class ResponseSender
         $pending = $head;
         $remaining = $length;
         $connection->pauseRecv();
+        $onClose = $body !== null ? $this->closeOnDisconnect($connection, $body) : $connection->onClose;
 
-        $write = function (TcpConnection $connection) use (&$pending, &$remaining, $body, $chunked, $keepAlive): void {
+        $write = function (TcpConnection $connection) use (&$pending, &$remaining, $body, $chunked, $keepAlive, $onClose): void {
             try {
                 while ($connection->getStatus() === TcpConnection::STATUS_ESTABLISHED) {
                     // continued by onBufferDrain, once the client has read the buffered data
@@ -192,7 +193,7 @@ final class ResponseSender
 
                     if ($pending === '') {
                         if ($body === null || $remaining === 0) {
-                            self::finish($connection, $body, true, $keepAlive);
+                            self::finish($connection, $body, true, $keepAlive, $onClose);
                             return;
                         }
 
@@ -204,7 +205,7 @@ final class ResponseSender
                             } elseif ($remaining !== null) {
                                 $this->logger->warning('The response body is shorter than its Content-Length');
                             }
-                            self::finish($connection, $body, $remaining === null, $keepAlive);
+                            self::finish($connection, $body, $remaining === null, $keepAlive, $onClose);
                             return;
                         }
 
@@ -246,11 +247,29 @@ final class ResponseSender
         $connection->pauseRecv();
         // the client is gone or doesn't read, e.g. earlier pipelined responses
         if ($connection->send($buffered === '' ? $head : $head . $frame($buffered), true) === false) {
-            self::finish($connection, $body, false, $keepAlive);
+            self::finish($connection, $body, false, $keepAlive, $connection->onClose);
             return;
         }
 
-        // e.g. set by the application on the worker
+        $onClose = $this->closeOnDisconnect($connection, $body);
+        $body->attach(
+            static fn(string $data): bool => $connection->send($frame($data), true) !== false,
+            static function (bool $complete) use ($connection, $body, $chunked, $keepAlive, $onClose): void {
+                if ($complete && $chunked) {
+                    $connection->send("0\r\n\r\n", true);
+                }
+                self::finish($connection, $body, $complete, $keepAlive, $onClose);
+            },
+        );
+    }
+
+    /**
+     * Closes the body once the client is gone, e.g. while the response waits for it to read, no drain follows then
+     *
+     * @return ?callable the previous callback, e.g. set by the application on the worker, it is still called
+     */
+    private function closeOnDisconnect(TcpConnection $connection, StreamInterface $body): ?callable
+    {
         $onClose = $connection->onClose;
         $connection->onClose = function (TcpConnection $connection) use ($body, $onClose): void {
             try {
@@ -263,24 +282,19 @@ final class ResponseSender
                 $onClose($connection);
             }
         };
-        $body->attach(
-            static fn(string $data): bool => $connection->send($frame($data), true) !== false,
-            static function (bool $complete) use ($connection, $body, $chunked, $keepAlive, $onClose): void {
-                $connection->onClose = $onClose;
-                if ($complete && $chunked) {
-                    $connection->send("0\r\n\r\n", true);
-                }
-                self::finish($connection, $body, $complete, $keepAlive);
-            },
-        );
+
+        return $onClose;
     }
 
     /**
      * Ends a streamed or pushed body, the connection receives further requests or is closed
+     *
+     * @param ?callable $onClose the callback before the body was sent
      */
-    private static function finish(TcpConnection $connection, ?StreamInterface $body, bool $complete, bool $keepAlive): void
+    private static function finish(TcpConnection $connection, ?StreamInterface $body, bool $complete, bool $keepAlive, ?callable $onClose): void
     {
         $connection->onBufferDrain = null;
+        $connection->onClose = $onClose;
 
         if ($complete && $keepAlive) {
             $connection->resumeRecv();

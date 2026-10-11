@@ -6,7 +6,6 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
-use RuntimeException;
 use Semperton\Workerman\HttpServer;
 use Semperton\Workerman\PushStream;
 use Semperton\Workerman\Tests\Fixtures\RepeatedStream;

@@ -309,13 +309,29 @@ final class ResponseSenderTest extends TestCase
         $body = Stream::create(str_repeat('0123456789abcdef', 256 * 1024)); // 4 MB, streamed
 
         $socket = new SocketConnection();
-        $socket->close();
+        // the response waits for the client to read
         $this->sender()->send($socket->connection, new Response(200, [], $body), 'GET', '1.1', '');
+        $socket->close();
+        // the event loop notices
+        $socket->write('');
 
         self::assertSame(TcpConnection::STATUS_CLOSED, $socket->connection->getStatus());
         self::assertNull($socket->connection->onBufferDrain);
         // closed, not left to the garbage collector
         self::assertFalse($body->isReadable());
+    }
+
+    public function testStreamKeepsOnClose(): void
+    {
+        $onClose = static function (): void {};
+
+        $socket = new SocketConnection();
+        $socket->connection->onClose = $onClose;
+        $this->sender()->send($socket->connection, new Response(200, [], str_repeat('a', 3 * 1024 * 1024)), 'GET', '1.1', '');
+        $socket->read();
+
+        // restored, e.g. for the next response on the connection
+        self::assertSame($onClose, $socket->connection->onClose);
     }
 
     public function testPush(): void
