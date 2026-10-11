@@ -6,13 +6,24 @@
         "workerman",
         "psr-7",
         "psr-15",
+        "http-server",
         "server",
-        "long-running"
+        "long-running",
+        "server-sent-events",
+        "sse"
     ],
+    "homepage": "https://github.com/semperton/workerman",
     "license": "MIT",
+    "authors": [
+        {
+            "name": "Johannes Rabausch",
+            "email": "mail@jrabausch.de"
+        }
+    ],
     "support": {
         "issues": "https://github.com/semperton/workerman/issues",
-        "source": "https://github.com/semperton/workerman"
+        "source": "https://github.com/semperton/workerman",
+        "security": "https://github.com/semperton/workerman/security/advisories/new"
     },
     "autoload": {
         "psr-4": {
@@ -56,5 +67,10 @@
     },
     "suggest": {
         "ext-event": "Faster event loop with many connections"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        }
     }
 }
