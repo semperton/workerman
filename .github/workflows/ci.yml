@@ -4,25 +4,49 @@ on:
   push:
     branches: [main]
   pull_request:
+  # the server relies on workerman internals, new releases are tested weekly
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        os: ['ubuntu-latest']
         php: ['8.2', '8.3', '8.4', '8.5']
         dependencies: ['highest']
+        extensions: ['pcntl, posix']
         include:
-          - php: '8.2'
+          - os: 'ubuntu-latest'
+            php: '8.2'
             dependencies: 'lowest'
-    name: PHP ${{ matrix.php }} (${{ matrix.dependencies }})
+            extensions: 'pcntl, posix'
+          # the event loop recommended for production
+          - os: 'ubuntu-latest'
+            php: '8.4'
+            dependencies: 'highest'
+            extensions: 'pcntl, posix, event'
+          - os: 'macos-latest'
+            php: '8.4'
+            dependencies: 'highest'
+            extensions: 'pcntl, posix'
+    name: PHP ${{ matrix.php }} (${{ matrix.dependencies }}, ${{ matrix.extensions }}, ${{ matrix.os }})
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: pcntl, posix
+          extensions: ${{ matrix.extensions }}
           coverage: none
       - uses: ramsey/composer-install@v3
         with:
@@ -31,6 +55,7 @@ jobs:
 
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
