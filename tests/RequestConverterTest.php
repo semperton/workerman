@@ -144,6 +144,27 @@ final class RequestConverterTest extends TestCase
         $this->convert("GET /hello HTTP/1.1\r\nHost: $host\r\n\r\n");
     }
 
+    #[TestWith(["Bad Name: a\r\n"])]
+    #[TestWith(["Bad(Name): a\r\n"])]
+    #[TestWith([": a\r\n"])]
+    #[TestWith(["X-Id: a\x00b\r\n"])]
+    #[TestWith(["X-Id: a\x7fb\r\n"])]
+    #[TestWith(["X-Id: a\nb\r\n"])]
+    public function testInvalidHeader(string $header): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->convert("GET /hello HTTP/1.1\r\nHost: localhost\r\n{$header}\r\n");
+    }
+
+    public function testHeaderValues(): void
+    {
+        // obs-text and tabs are allowed, rfc 9110 5.5
+        $request = $this->convert("GET / HTTP/1.1\r\nHost: localhost\r\nX-Name: J\xc3\xbcrgen\tM\r\n\r\n");
+
+        self::assertSame("J\xc3\xbcrgen\tM", $request->getHeaderLine('X-Name'));
+    }
+
     #[TestWith(['evil.com/hello'])]
     #[TestWith(['http://evil.com/hello'])]
     public function testInvalidTarget(string $target): void
