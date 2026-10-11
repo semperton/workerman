@@ -9,13 +9,14 @@ use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
 use Semperton\Workerman\HttpServer;
 use Semperton\Workerman\PushStream;
+use Semperton\Workerman\Tests\Fixtures\RepeatedStream;
 use Semperton\Workerman\WorkerLifecycle;
 use Workerman\Timer;
 use Workerman\Worker;
 
 /**
  * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout> <stopTimeout>
- * Responds with the pid of the worker, a 4 MB body for '/large', the request body for '/echo',
+ * Responds with the pid of the worker, a 4 MB body for '/large', a 1 GB body for '/huge', the request body for '/echo',
  * an event every 100 ms for '/events' ('/events-error' throws once the client is gone),
  * or whether workerStopping() was called for '/stopping'
  * workerStopping() writes the pid of the worker to <tmp>/semperton-workerman-<port>.stopping
@@ -46,6 +47,8 @@ $handler = new class ($files . '.stopping') implements RequestHandlerInterface, 
     {
         return match ($request->getUri()->getPath()) {
             '/large' => new Response(body: str_repeat('0123456789abcdef', 256 * 1024)),
+            // larger than the socket buffers, it is still being sent when the worker stops
+            '/huge' => new Response(body: new RepeatedStream('0123456789abcdef', 1024 * 1024 * 1024)),
             '/echo' => new Response(body: $request->getBody()),
             '/events' => new Response(200, ['Content-Type' => 'text/event-stream'], $this->events()),
             '/events-error' => new Response(200, ['Content-Type' => 'text/event-stream'], $this->events(fail: true)),

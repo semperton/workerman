@@ -39,6 +39,7 @@ final class ServerTest extends TestCase
 {
     private const GET = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
     private const GET_LARGE = "GET /large HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    private const GET_HUGE = "GET /huge HTTP/1.1\r\nHost: localhost\r\n\r\n";
     private const GET_EVENTS = "GET /events HTTP/1.1\r\nHost: localhost\r\n\r\n";
     private const LARGE = '0123456789abcdef';
 
@@ -320,8 +321,9 @@ final class ServerTest extends TestCase
         try {
             [, $pid] = (new Client($port))->request(self::GET);
 
+            // 1 GB, the os buffers e.g. 4 MB of it (loopback autotuning), the rest is still being sent
             $busy = new Client($port);
-            $busy->write(self::GET_LARGE);
+            $busy->write(self::GET_HUGE);
             usleep(100_000);
 
             posix_kill(proc_get_status($process)['pid'], SIGUSR2);
@@ -329,7 +331,7 @@ final class ServerTest extends TestCase
 
             // within the 5 s read timeout of the client
             self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
-            self::assertLessThan(16 * 256 * 1024, strlen($busy->readAll()), 'the response was cut');
+            self::assertLessThan(1024 * 1024 * 1024, strlen($busy->readAll()), 'the response was cut');
             self::assertTrue($busy->closed());
         } finally {
             self::stop($process);
