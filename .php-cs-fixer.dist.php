@@ -5,7 +5,7 @@ declare(strict_types=1);
 use PhpCsFixer\Config;
 use PhpCsFixer\Finder;
 
-$finder = Finder::create()->in([__DIR__ . '/src', __DIR__ . '/tests']);
+$finder = Finder::create()->in([__DIR__ . '/src', __DIR__ . '/tests', __DIR__ . '/benchmark']);
 
 return (new Config())
     ->setRiskyAllowed(true)

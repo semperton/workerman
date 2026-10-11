@@ -1,0 +1,16 @@
+{
+    "$schema": "./vendor/phpbench/phpbench/phpbench.schema.json",
+    "runner.bootstrap": "vendor/autoload.php",
+    "runner.path": "benchmark/micro",
+    "runner.file_pattern": "*Bench.php",
+    "runner.revs": 2000,
+    "runner.iterations": 5,
+    "runner.warmup": 1,
+    "runner.retry_threshold": 5,
+    "report.generators": {
+        "summary": {
+            "extends": "aggregate",
+            "cols": ["benchmark", "subject", "mem_peak", "mode", "rstdev"]
+        }
+    }
+}
