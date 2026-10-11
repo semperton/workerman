@@ -10,6 +10,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UploadedFileInterface;
+use WeakMap;
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http\Request;
 
@@ -34,11 +35,22 @@ use const UPLOAD_ERR_OK;
  */
 final class RequestConverter
 {
+    /**
+     * Workerman asks the os for the local address every time, it doesn't change during a connection
+     *
+     * @var WeakMap<TcpConnection, array{string, int}> ip and port
+     */
+    private WeakMap $localAddresses;
+
     public function __construct(
         private readonly ServerRequestFactoryInterface $requestFactory,
         private readonly StreamFactoryInterface $streamFactory,
         private readonly UploadedFileFactoryInterface $uploadedFileFactory,
-    ) {}
+    ) {
+        /** @var WeakMap<TcpConnection, array{string, int}> */
+        $localAddresses = new WeakMap();
+        $this->localAddresses = $localAddresses;
+    }
 
     public function convert(Request $request, TcpConnection $connection): ServerRequestInterface
     {
@@ -46,7 +58,7 @@ final class RequestConverter
         $target = $request->uri();
         $protocol = $request->protocolVersion();
         $https = $connection->transport === 'ssl';
-        $localIp = $connection->getLocalIp();
+        [$localIp, $localPort] = $this->localAddress($connection);
 
         /** @var array<string, string> $headers */
         $headers = $request->header();
@@ -55,7 +67,7 @@ final class RequestConverter
             $host = $headers['host'];
         } elseif ($protocol === '1.0') {
             // http/1.0 may omit the host, the local address is used instead
-            $host = $localIp . ':' . $connection->getLocalPort();
+            $host = $localIp . ':' . $localPort;
         } else {
             throw new InvalidArgumentException('Missing host');
         }
@@ -84,7 +96,7 @@ final class RequestConverter
             'SERVER_NAME' => $matches[1],
             // workerman keeps the brackets of ipv6 addresses
             'SERVER_ADDR' => trim($localIp, '[]'),
-            'SERVER_PORT' => $connection->getLocalPort(),
+            'SERVER_PORT' => $localPort,
             'REMOTE_ADDR' => trim($connection->getRemoteIp(), '[]'),
             'REMOTE_PORT' => $connection->getRemotePort(),
             'REQUEST_TIME' => (int) $time,
@@ -153,6 +165,21 @@ final class RequestConverter
         }
 
         return $serverRequest;
+    }
+
+    /**
+     * @return array{string, int} ip and port
+     */
+    private function localAddress(TcpConnection $connection): array
+    {
+        $address = $this->localAddresses[$connection] ?? null;
+
+        if ($address === null) {
+            $address = [$connection->getLocalIp(), $connection->getLocalPort()];
+            $this->localAddresses[$connection] = $address;
+        }
+
+        return $address;
     }
 
     /**
