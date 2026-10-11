@@ -4,7 +4,6 @@
 /psalm.xml		export-ignore
 /.php-cs-fixer.dist.php	export-ignore
 /.editorconfig		export-ignore
-/composer.lock		export-ignore
 /phpunit.xml.dist	export-ignore
 /.github		export-ignore
 /benchmark		export-ignore
