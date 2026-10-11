@@ -15,7 +15,7 @@ Just use Composer:
 ```
 composer require semperton/workerman
 ```
-Requires PHP 8.2+ and the `pcntl` and `posix` extensions (Linux / macOS).
+Requires PHP 8.2+ and the `ctype`, `pcntl` and `posix` extensions (Linux / macOS, Windows is not supported).
 Requests are created with [nyholm/psr7](https://github.com/Nyholm/psr7), responses may come from any PSR-7 implementation.
 
 ## Usage
@@ -37,6 +37,9 @@ Worker::runAll();
 Run the script with `php server.php start`, see the [Workerman docs](https://manual.workerman.net/doc/en/) for `-d` (daemon), `stop`, `reload` and `status`.
 
 The handler is created in the workers, so database connections and other resources are never shared between processes.
+It is created when the worker starts, so errors show up early: if the factory throws, the worker exits and Workerman starts it again, until the error is fixed.
+
+`listen()` returns the Workerman `Worker`, e.g. to set its `user` and `group`, and throws an `InvalidArgumentException` for invalid options.
 
 ## Options
 
@@ -69,7 +72,12 @@ idle keep-alive connections are closed, so the old workers exit within a second,
 The workers share one socket, so connections queued meanwhile are accepted by the new workers, none are dropped.
 
 Connections that are still busy after `stopTimeout`, e.g. long downloads or clients that don't read, are closed, so a stop always ends.
-Keep it below the time your process manager waits before it kills the server, e.g. `TimeoutStopSec` of systemd or the grace period of Kubernetes.
+
+Without `-g`, the workers stop right away and drop their connections. Workerman stops gracefully on `SIGQUIT` only, `SIGTERM` and `SIGINT` stop right away.
+Process managers send `SIGTERM` by default, so configure `SIGQUIT`, and keep `stopTimeout` below the time they wait before they kill the server:
+
+- systemd: `KillSignal=SIGQUIT` and `TimeoutStopSec=` above `stopTimeout`
+- Docker and Kubernetes: `STOPSIGNAL SIGQUIT` in the image, and `terminationGracePeriodSeconds` above `stopTimeout`
 
 ## Requests and responses
 
@@ -120,6 +128,7 @@ If it throws, the error is logged and the worker restarts gracefully, as its sta
 A `PushStream` body is sent while the application pushes to it, e.g. from a timer or a subscription. The response is sent chunked and the connection receives no further requests until it ends.
 
 ```php
+use Nyholm\Psr7\Response;
 use Semperton\Workerman\PushStream;
 use Workerman\Timer;
 
@@ -137,6 +146,8 @@ return new Response(200, ['Content-Type' => 'text/event-stream', 'Cache-Control'
 - Behind nginx, disable response buffering for the route, e.g. with an `X-Accel-Buffering: no` header.
 
 The handler must not block meanwhile, a worker handles one request at a time.
+Exceptions thrown in timer callbacks stop the worker with all its connections (Workerman), catch them in the callback.
+Exceptions thrown by `onClose()` listeners are logged when the client is gone.
 
 ## WebSockets
 
@@ -160,9 +171,11 @@ The `FileMonitor` reloads the workers when a file changes:
 ```php
 use Semperton\Workerman\FileMonitor;
 
+// checked every second, or e.g. interval: 0.5
 (new FileMonitor([__DIR__ . '/src', __DIR__ . '/config']))->listen();
 ```
-Files loaded before the workers start need a restart.
+The workers are reloaded gracefully, like `reload -g`. Files loaded before the workers start need a restart.
+The monitor does nothing in daemon mode (`-d`).
 
 ```
 composer test   # phpunit
@@ -194,8 +207,28 @@ see [benchmark/](benchmark/README.md) for the method, all scenarios, latencies, 
 | Server | Plaintext | Browser-like GET | Form POST | New connection per request |
 |---|---:|---:|---:|---:|
 | Workerman, without PSR-7 | 199,151 | 156,519 | 174,371 | 31,467 |
-| **semperton/workerman** | **70,479** | **52,485** | **60,675** | **39,072** |
+| **semperton/workerman** (`select()` loop) | **70,479** | **52,485** | **60,675** | **39,072** |
 | nginx + PHP-FPM | 12,238 | 11,187 | 11,717 | 10,679 |
 
 Workerman without PSR-7 serves about three times as many requests, which is the cost of creating PSR-7 objects for every request.
 With a real application, the time spent in the application and its I/O outweighs these differences.
+
+## Limitations
+
+Workerman parses the requests and answers these with a `400`, they are rare behind a reverse proxy:
+
+- methods other than `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE` and `OPTIONS`, e.g. `QUERY` or WebDAV methods (RFC 9110 recommends `501`)
+- request targets in absolute form (`GET http://host/path`) and `OPTIONS *`, only `/path?query` is accepted
+- protocol versions other than HTTP/1.x (RFC 9110 recommends `505`)
+
+Interim responses (`1xx`) and protocol upgrades are not supported, see [WebSockets](#websockets).
+
+## Versioning
+
+This package follows [Semantic Versioning](https://semver.org). The public API is `HttpServer`, `PushStream`, `WorkerLifecycle` and `FileMonitor`,
+classes and methods marked `@internal` may change in any release. Changes are listed in the [changelog](CHANGELOG.md).
+Security issues are reported privately, see [SECURITY.md](SECURITY.md).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
