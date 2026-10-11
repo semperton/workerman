@@ -138,6 +138,22 @@ return new Response(200, ['Content-Type' => 'text/event-stream', 'Cache-Control'
 
 The handler must not block meanwhile, a worker handles one request at a time.
 
+## WebSockets
+
+WebSockets are served by a Workerman worker of their own, next to the HTTP workers, the reverse proxy routes e.g. `/ws` to it:
+
+```php
+use Workerman\Connection\TcpConnection;
+use Workerman\Worker;
+
+$server->listen('http://0.0.0.0:8080', workers: 4);
+
+$websocket = new Worker('websocket://0.0.0.0:8081');
+$websocket->onMessage = static fn(TcpConnection $connection, string $data) => $connection->send($data);
+
+Worker::runAll();
+```
+
 ## Development
 
 The `FileMonitor` reloads the workers when a file changes:
