@@ -30,6 +30,7 @@ use const UPLOAD_ERR_OK;
 
 /**
  * Converts Workerman requests to PSR-7 server requests, as PHP-FPM would populate them
+ * Forwarded headers (X-Forwarded-For, -Proto) are left to the application, only it knows which proxies to trust
  * Workerman requests may be cached and reused, so they are never modified
  *
  * Requests are built with nyholm/psr7 directly, PSR-17 factories would clone the request for every header
@@ -58,7 +59,6 @@ final class RequestConverter
         $method = $request->method();
         $target = $request->uri();
         $protocol = $request->protocolVersion();
-        $https = $connection->transport === 'ssl';
         [$localIp, $localPort] = $this->localAddress($connection);
 
         /** @var array<string, string> $headers */
@@ -86,7 +86,8 @@ final class RequestConverter
             throw new InvalidArgumentException("Invalid request target < $target >");
         }
 
-        $uri = ($https ? 'https://' : 'http://') . $host . $target;
+        // tls is terminated by the reverse proxy, which reports the scheme in X-Forwarded-Proto
+        $uri = 'http://' . $host . $target;
 
         $time = microtime(true);
         $serverParams = [
@@ -111,10 +112,6 @@ final class RequestConverter
                 $key = strtoupper(strtr($name, '-', '_'));
                 $serverParams[$key === 'CONTENT_TYPE' || $key === 'CONTENT_LENGTH' ? $key : 'HTTP_' . $key] = $value;
             }
-        }
-
-        if ($https) {
-            $serverParams['HTTPS'] = 'on';
         }
 
         // validates the headers, parses the query and creates the body stream lazily

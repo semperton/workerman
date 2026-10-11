@@ -73,7 +73,7 @@ Keep it below the time your process manager waits before it kills the server, e.
 
 ## Requests and responses
 
-Requests are converted like PHP-FPM would populate them: server params (`REMOTE_ADDR`, `HTTPS`, `HTTP_*` ...), cookies, query params, form posts and uploaded files.
+Requests are converted like PHP-FPM would populate them: server params (`REMOTE_ADDR`, `SERVER_NAME`, `HTTP_*` ...), cookies, query params, form posts and uploaded files.
 Other bodies (e.g. JSON) are left to the application.
 
 - Keep-alive, pipelining, HTTP/1.0 and chunked request bodies are supported.
@@ -163,6 +163,9 @@ composer bench  # phpbench micro benchmarks of the request conversion and respon
 - **Avoid blocking for long.** A worker handles one request at a time.
 
 In production, run the server behind a reverse proxy that handles TLS, compression and static files.
+
+- **Use the forwarded headers of your proxy only.** Requests arrive over plain HTTP from the proxy, so the uri has the scheme `http` and `REMOTE_ADDR` is the address of the proxy.
+  A PSR-15 middleware that trusts `X-Forwarded-For` and `X-Forwarded-Proto` only from the proxy's address restores the client address and scheme. Never trust them from anyone else, clients can send them too.
 
 - **Install the `event` extension.** Without it, Workerman falls back to `select()`, which handles at most 1024 connections per worker.
 - **Enable OPcache for the CLI**, `opcache.enable_cli=1`, and the JIT, e.g. `opcache.jit=tracing`.
