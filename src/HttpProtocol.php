@@ -6,6 +6,7 @@ namespace Semperton\Workerman;
 
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http;
+use Workerman\Protocols\Http\Response;
 
 use function microtime;
 use function preg_match;
@@ -14,13 +15,13 @@ use function strpos;
 use function substr;
 
 /**
- * Workerman's HTTP protocol, extended by:
+ * Workerman's HTTP protocol, delegated to and extended by:
  * - "Expect: 100-continue", clients like curl wait a second for it before sending larger bodies
  * - the time a request head started to arrive, slow heads are answered with a 408 by ConnectionTimeouts
  *
  * @internal
  */
-final class HttpProtocol extends Http
+final class HttpProtocol
 {
     private const CONTINUE = "HTTP/1.1 100 Continue\r\n\r\n";
 
@@ -34,16 +35,16 @@ final class HttpProtocol extends Http
         if ($headEnd === false) {
             /** @psalm-suppress PossiblyNullPropertyFetch, PossiblyNullPropertyAssignment the context is always set */
             $connection->context->headStartedAt ??= microtime(true);
-            return parent::input($buffer, $connection);
+            return Http::input($buffer, $connection);
         }
 
         /** @psalm-suppress PossiblyNullPropertyFetch the context is always set */
         unset($connection->context->headStartedAt);
 
-        $length = parent::input($buffer, $connection);
+        $length = Http::input($buffer, $connection);
         $bufferLength = strlen($buffer);
 
-        // only the head has arrived, the body is announced (0 = chunked), and the parent rejected nothing
+        // only the head has arrived, the body is announced (0 = chunked), and Http rejected nothing
         if (
             $bufferLength === $headEnd + 4
             && ($length === 0 || $length > $bufferLength)
@@ -54,6 +55,16 @@ final class HttpProtocol extends Http
         }
 
         return $length;
+    }
+
+    public static function decode(string $buffer, TcpConnection $connection): mixed
+    {
+        return Http::decode($buffer, $connection);
+    }
+
+    public static function encode(Response|string $response, TcpConnection $connection): string
+    {
+        return Http::encode($response, $connection);
     }
 
     /**
