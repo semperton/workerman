@@ -120,6 +120,9 @@ final class HttpServer
         // per connection, the default would also limit other connections of the worker, e.g. clients of databases
         $worker->onConnect = static function (TcpConnection $connection) use ($maxBodySize): void {
             $connection->maxPackageSize = $maxBodySize + self::MAX_HEAD_SIZE;
+            // the exact limit of the body, checked by HttpProtocol
+            /** @psalm-suppress PossiblyNullPropertyAssignment the context is always set */
+            $connection->context->maxBodySize = $maxBodySize;
         };
         $worker->onWorkerStart = function (Worker $worker) use ($maxRequests, $idleTimeout, $headerTimeout, $stopTimeout): void {
             $this->maxRequests = $maxRequests;

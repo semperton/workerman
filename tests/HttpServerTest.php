@@ -168,6 +168,7 @@ final class HttpServerTest extends TestCase
             ($worker->onConnect)($socket->connection);
             // the body limit plus the head, only for the connections of the worker
             self::assertSame(1024 + 16 * 1024, $socket->connection->maxPackageSize);
+            self::assertSame(1024, $socket->connection->context?->maxBodySize);
             self::assertSame($defaultMaxPackageSize, TcpConnection::$defaultMaxPackageSize);
 
             self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
