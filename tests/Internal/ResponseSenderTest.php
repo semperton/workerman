@@ -18,6 +18,7 @@ use Semperton\Workerman\Tests\Fixtures\ArrayLogger;
 use Semperton\Workerman\Tests\Fixtures\FailingStream;
 use Semperton\Workerman\Tests\Fixtures\ReportedSizeStream;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
+use Semperton\Workerman\Tests\Fixtures\StreamDecorator;
 use Semperton\Workerman\Tests\Fixtures\UnvalidatedResponse;
 use UnexpectedValueException;
 use Workerman\Connection\TcpConnection;
@@ -242,6 +243,33 @@ final class ResponseSenderTest extends TestCase
         self::assertStringContainsString("\r\nTransfer-Encoding: chunked", $head);
         self::assertStringNotContainsString('Content-Length', $head);
         self::assertSame('hello', $this->decodeChunked($body));
+    }
+
+    public function testUnreadableBody(): void
+    {
+        // e.g. a socket, read() returns '' while no data is available, PSR-7 allows it
+        $body = new class (Stream::create('first part;')) extends StreamDecorator {
+            public function getSize(): ?int
+            {
+                return null;
+            }
+
+            public function eof(): bool
+            {
+                return false;
+            }
+        };
+
+        $logger = new ArrayLogger();
+        $socket = new SocketConnection();
+        (new ResponseSender($logger))->send($socket->connection, new Response(200, [], $body), 'GET', '1.1', '');
+        [$head, $data] = $this->split($socket->read());
+
+        // without the last chunk, the client notices the incomplete body, as the connection is closed
+        self::assertStringContainsString("\r\nTransfer-Encoding: chunked", $head);
+        self::assertSame("b\r\nfirst part;\r\n", $data);
+        self::assertTrue($socket->ended());
+        self::assertSame(['The response body could not be read to its end'], $logger->messages);
     }
 
     public function testContentLengthOfUnknownSize(): void

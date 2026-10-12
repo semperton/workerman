@@ -225,12 +225,16 @@ final class ResponseSender
                         $data = $body->eof() ? '' : $body->read($remaining === null ? self::CHUNK_SIZE : min(self::CHUNK_SIZE, $remaining));
 
                         if ($data === '') {
-                            if ($chunked) {
+                            // e.g. a socket without data yet, PSR-7 allows it, waiting would block the worker
+                            $ended = $body->eof();
+                            if (!$ended) {
+                                $this->logger->warning('The response body could not be read to its end');
+                            } elseif ($chunked) {
                                 $connection->send("0\r\n\r\n", true);
                             } elseif ($remaining !== null) {
                                 $this->logger->warning('The response body is shorter than its Content-Length');
                             }
-                            self::finish($connection, $body, $remaining === null, $keepAlive, $onClose);
+                            self::finish($connection, $body, $ended && $remaining === null, $keepAlive, $onClose);
                             return;
                         }
 
