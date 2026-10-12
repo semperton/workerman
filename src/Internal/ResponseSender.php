@@ -55,7 +55,7 @@ final class ResponseSender
 
     /**
      * @param string $connectionHeader of the request
-     * @throws UnexpectedValueException for interim (1xx) responses or invalid headers
+     * @throws UnexpectedValueException for interim (1xx) responses, invalid headers or a PushStream that is already sent
      */
     public function send(
         TcpConnection $connection,
@@ -80,6 +80,11 @@ final class ResponseSender
         }
 
         $body = $response->getBody();
+        // the body of another response, its pushes would only reach one of them
+        if ($body instanceof PushStream && $body->isAttached()) {
+            throw new UnexpectedValueException('The PushStream is already the body of another response');
+        }
+
         $size = null;
         $contentLength = null;
         $chunked = false;

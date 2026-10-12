@@ -149,6 +149,7 @@ return new Response(200, ['Content-Type' => 'text/event-stream', 'Cache-Control'
 ```
 - `push()` returns `false` if the data was not taken: the stream is closed, or the client doesn't read (there is no queue, so a slow client can't fill the memory).
 - `end()` completes the body, `close()` aborts it and closes the connection.
+- A `PushStream` is the body of one response, sending it again is answered with a `500`.
 - The idle timeout applies, push something (e.g. a `:` comment) more often than `idleTimeout`, this also detects clients that are gone.
 - On reloads and restarts, push connections are closed like idle ones, `EventSource` clients reconnect.
 - Behind nginx, disable response buffering for the route, e.g. with an `X-Accel-Buffering: no` header.

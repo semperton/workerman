@@ -27,6 +27,7 @@ final class PushStream implements StreamInterface
     private string $buffer = '';
     private bool $ended = false;
     private bool $closed = false;
+    private bool $attached = false;
     /** @var ?Closure(string): bool */
     private ?Closure $send = null;
     /** @var ?Closure(bool): void */
@@ -85,12 +86,21 @@ final class PushStream implements StreamInterface
      */
     public function attach(Closure $send, Closure $finish): void
     {
+        $this->attached = true;
         $this->send = $send;
         $this->finish = $finish;
 
         if ($this->ended) {
             $this->release(!$this->closed);
         }
+    }
+
+    /**
+     * @internal a stream is the body of one response
+     */
+    public function isAttached(): bool
+    {
+        return $this->attached;
     }
 
     /**

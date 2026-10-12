@@ -444,6 +444,26 @@ final class ResponseSenderTest extends TestCase
         self::assertSame([$path], $received->getArrayCopy());
     }
 
+    public function testPushSentTwice(): void
+    {
+        $stream = new PushStream();
+        $first = new SocketConnection();
+        $this->sender()->send($first->connection, new Response(200, [], $stream), 'GET', '1.1', '');
+        $first->read();
+
+        $second = new SocketConnection();
+        try {
+            $this->sender()->send($second->connection, new Response(200, [], $stream), 'GET', '1.1', '');
+            self::fail('Expected an exception');
+        } catch (UnexpectedValueException) {
+            self::assertSame('', $second->read(), 'nothing sent');
+        }
+
+        // the first response continues
+        self::assertTrue($stream->push('a'));
+        self::assertSame("1\r\na\r\n", $first->read());
+    }
+
     public function testPushEndedBeforeSend(): void
     {
         $stream = new PushStream();
