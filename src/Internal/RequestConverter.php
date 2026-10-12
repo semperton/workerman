@@ -63,7 +63,7 @@ final class RequestConverter
         $protocol = $request->protocolVersion();
         [$localIp, $localPort] = $this->localAddress($connection);
 
-        /** @var array<string, string> $headers */
+        /** @var array<array-key, string> $headers numeric names are integer keys */
         $headers = $request->header();
 
         if (isset($headers['host'])) {
@@ -84,7 +84,9 @@ final class RequestConverter
         }
 
         // only the origin form (/path?query) is accepted, other targets would change the host of the uri
-        if (!str_starts_with($target, '/')) {
+        // a fragment is never sent (rfc 9112 3.2.1), it would be cut from the path
+        // non-ascii bytes are percent-encoded by clients (rfc 3986 2.1), a proxy might match them differently than the application
+        if (!str_starts_with($target, '/') || str_contains($target, '#') || preg_match('/[\x80-\xff]/', $target) === 1) {
             throw new InvalidArgumentException("Invalid request target < $target >");
         }
 
@@ -110,6 +112,7 @@ final class RequestConverter
         // like nginx and apache, names with underscores are skipped, 'x_forwarded_for' would replace 'x-forwarded-for'
         // 'proxy' is skipped, as HTTP_PROXY configures the proxy of http clients (httpoxy)
         foreach ($headers as $name => $value) {
+            $name = (string) $name;
             if ($name !== 'proxy' && !str_contains($name, '_')) {
                 $key = strtoupper(strtr($name, '-', '_'));
                 $serverParams[$key === 'CONTENT_TYPE' || $key === 'CONTENT_LENGTH' ? $key : 'HTTP_' . $key] = $value;

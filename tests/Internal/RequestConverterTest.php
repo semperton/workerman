@@ -14,6 +14,7 @@ use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Protocols\Http\Request;
 
 use function strlen;
+use function strtolower;
 
 final class RequestConverterTest extends TestCase
 {
@@ -135,9 +136,36 @@ final class RequestConverterTest extends TestCase
 
     public function testMissingHost(): void
     {
-        $this->expectException(InvalidArgumentException::class);
+        try {
+            $this->convert("GET /hello HTTP/1.1\r\n\r\n");
+            self::fail('Expected an InvalidArgumentException');
+        } catch (InvalidArgumentException $exception) {
+            self::assertSame('Missing host', $exception->getMessage());
+        }
+    }
 
-        $this->convert("GET /hello HTTP/1.1\r\n\r\n");
+    #[TestWith(['LOCALHOST', 'LOCALHOST', null])]
+    #[TestWith(['a:65535', 'a', 65535])]
+    #[TestWith(['[::1]:8080', '[::1]', 8080])]
+    public function testValidHost(string $host, string $expectedHost, ?int $port): void
+    {
+        $uri = $this->convert("GET /hello HTTP/1.1\r\nHost: $host\r\n\r\n")->getUri();
+
+        self::assertSame(strtolower($expectedHost), $uri->getHost());
+        self::assertSame($port, $uri->getPort());
+    }
+
+    #[TestWith(['PUT', 'application/x-www-form-urlencoded', null], 'not a post')]
+    #[TestWith(['POST', 'Application/X-WWW-Form-Urlencoded; charset=UTF-8', ['a' => 'b']], 'case-insensitive type')]
+    #[TestWith(['POST', 'text/plain', null], 'other type')]
+    public function testFormBodyLikeFpm(string $method, string $contentType, ?array $parsedBody): void
+    {
+        $request = $this->convert(
+            "$method / HTTP/1.1\r\nHost: localhost\r\nContent-Type: $contentType\r\nContent-Length: 3\r\n\r\na=b",
+        );
+
+        self::assertSame($parsedBody, $request->getParsedBody());
+        self::assertSame('a=b', (string) $request->getBody());
     }
 
     #[TestWith(['a#'])]
@@ -166,6 +194,15 @@ final class RequestConverterTest extends TestCase
         $this->convert("GET /hello HTTP/1.1\r\nHost: localhost\r\n{$header}\r\n");
     }
 
+    public function testNumericHeaderName(): void
+    {
+        // an integer array key in PHP
+        $request = $this->convert("GET / HTTP/1.1\r\nHost: localhost\r\n123: a\r\n\r\n");
+
+        self::assertSame('a', $request->getHeaderLine('123'));
+        self::assertSame('a', $request->getServerParams()['HTTP_123'] ?? null);
+    }
+
     public function testHeaderValues(): void
     {
         // obs-text and tabs are allowed, rfc 9110 5.5
@@ -176,6 +213,11 @@ final class RequestConverterTest extends TestCase
 
     #[TestWith(['evil.com/hello'])]
     #[TestWith(['http://evil.com/hello'])]
+    #[TestWith(['/hello#a'])]
+    #[TestWith(['/hello?a#b'])]
+    #[TestWith(["/caf\xc3\xa9"])]
+    #[TestWith(["/\xc0\xaf"])]
+    #[TestWith(["/?q=\xff"])]
     public function testInvalidTarget(string $target): void
     {
         $this->expectException(InvalidArgumentException::class);
