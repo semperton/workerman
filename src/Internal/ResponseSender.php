@@ -96,44 +96,7 @@ final class ResponseSender
             $keepAlive = $keepAlive && ($contentLength !== null || $chunked);
         }
 
-        $reasonPhrase = $response->getReasonPhrase();
-        // e.g. a line break would end the status line, not every PSR-7 implementation validates it, rfc 9112 4
-        if (preg_match('/[^\t\x20-\x7e\x80-\xff]/', $reasonPhrase) === 1) {
-            $reasonPhrase = '';
-        }
-
-        $head = 'HTTP/1.1 ' . $status . ' ' . $reasonPhrase . "\r\n";
-        $hasDate = false;
-
-        foreach ($response->getHeaders() as $name => $values) {
-            $lowerName = strtolower((string) $name);
-            if ($lowerName === 'content-length' || $lowerName === 'transfer-encoding' || $lowerName === 'connection') {
-                continue;
-            }
-            $hasDate = $hasDate || $lowerName === 'date';
-            foreach ($values as $value) {
-                $head .= $name . ': ' . $value . "\r\n";
-            }
-        }
-
-        if (!$hasDate) {
-            $head .= 'Date: ' . $this->date() . "\r\n";
-        }
-
-        if ($contentLength !== null) {
-            $head .= 'Content-Length: ' . $contentLength . "\r\n";
-        } elseif ($chunked) {
-            $head .= "Transfer-Encoding: chunked\r\n";
-        }
-
-        if (!$keepAlive) {
-            $head .= "Connection: close\r\n";
-        } elseif ($http10) {
-            $head .= "Connection: keep-alive\r\n";
-        }
-
-        $head .= "\r\n";
-
+        $head = $this->head($response, $contentLength, $chunked, $keepAlive, $http10);
         $withBody = $method !== 'HEAD' && $status !== 204 && $status !== 205 && $status !== 304;
 
         if ($body instanceof PushStream) {
@@ -165,6 +128,50 @@ final class ResponseSender
         }
 
         $this->stream($connection, $head, $withBody ? $body : null, $contentLength, $chunked, $keepAlive);
+    }
+
+    /**
+     * The status line and headers, the framing headers of the application are replaced by the server's
+     */
+    private function head(ResponseInterface $response, ?int $contentLength, bool $chunked, bool $keepAlive, bool $http10): string
+    {
+        $reasonPhrase = $response->getReasonPhrase();
+        // e.g. a line break would end the status line, not every PSR-7 implementation validates it, rfc 9112 4
+        if (preg_match('/[^\t\x20-\x7e\x80-\xff]/', $reasonPhrase) === 1) {
+            $reasonPhrase = '';
+        }
+
+        $head = 'HTTP/1.1 ' . $response->getStatusCode() . ' ' . $reasonPhrase . "\r\n";
+        $hasDate = false;
+
+        foreach ($response->getHeaders() as $name => $values) {
+            $lowerName = strtolower((string) $name);
+            if ($lowerName === 'content-length' || $lowerName === 'transfer-encoding' || $lowerName === 'connection') {
+                continue;
+            }
+            $hasDate = $hasDate || $lowerName === 'date';
+            foreach ($values as $value) {
+                $head .= $name . ': ' . $value . "\r\n";
+            }
+        }
+
+        if (!$hasDate) {
+            $head .= 'Date: ' . $this->date() . "\r\n";
+        }
+
+        if ($contentLength !== null) {
+            $head .= 'Content-Length: ' . $contentLength . "\r\n";
+        } elseif ($chunked) {
+            $head .= "Transfer-Encoding: chunked\r\n";
+        }
+
+        if (!$keepAlive) {
+            $head .= "Connection: close\r\n";
+        } elseif ($http10) {
+            $head .= "Connection: keep-alive\r\n";
+        }
+
+        return $head . "\r\n";
     }
 
     /**

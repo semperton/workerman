@@ -58,6 +58,12 @@ final class HttpProtocol
         unset($connection->context->headStartedAt);
 
         $length = Http::input($buffer, $connection);
+
+        // Http has rejected the request
+        if ($connection->getStatus() !== TcpConnection::STATUS_ESTABLISHED) {
+            return $length;
+        }
+
         $bufferLength = strlen($buffer);
         // as sent, chunked bodies including their framing, the length is 0 until a chunked body is complete
         $bodyLength = ($length > 0 ? $length : $bufferLength) - $headEnd - 4;
@@ -66,31 +72,25 @@ final class HttpProtocol
          * @var ?int $maxBodySize set by HttpServer, a small head would leave room for a larger body in the package size
          */
         $maxBodySize = $connection->context->maxBodySize ?? null;
-
         // e.g. a large chunk or endless trailers would be buffered without limit
-        if (
-            (($length === 0 && $bufferLength > $connection->maxPackageSize) || ($maxBodySize !== null && $bodyLength > $maxBodySize))
-            && $connection->getStatus() === TcpConnection::STATUS_ESTABLISHED
-        ) {
+        $tooLarge = ($length === 0 && $bufferLength > $connection->maxPackageSize)
+            || ($maxBodySize !== null && $bodyLength > $maxBodySize);
+
+        if ($tooLarge) {
             $connection->end(self::TOO_LARGE, true);
             return 0;
         }
 
         // a proxy that reads a chunk line differently, e.g. with a bare LF as line end, sees another end of the body (request smuggling)
-        if (
-            isset($connection->context->chunked)
-            && $connection->getStatus() === TcpConnection::STATUS_ESTABLISHED
-            && !self::validChunks($buffer, $headEnd + 4)
-        ) {
+        if (isset($connection->context->chunked) && !self::validChunks($buffer, $headEnd + 4)) {
             $connection->end(self::BAD_REQUEST, true);
             return 0;
         }
 
-        // only the head has arrived, the body is announced (0 = chunked), and Http rejected nothing
+        // only the head has arrived and the body is announced (0 = chunked)
         if (
             $bufferLength === $headEnd + 4
             && ($length === 0 || $length > $bufferLength)
-            && $connection->getStatus() === TcpConnection::STATUS_ESTABLISHED
             && self::expectsContinue(substr($buffer, 0, $headEnd))
         ) {
             $connection->send(self::CONTINUE, true);
