@@ -20,11 +20,12 @@ use Workerman\Protocols\Http\Request;
 use Workerman\Timer;
 use Workerman\Worker;
 
+use function count;
 use function microtime;
+use function parse_url;
 use function posix_getpid;
 use function posix_kill;
 use function register_shutdown_function;
-use function str_starts_with;
 use function substr;
 
 use const SIGQUIT;
@@ -93,7 +94,9 @@ final class HttpServer
         string $user = '',
         string $group = '',
     ): void {
-        if (!str_starts_with($address, 'http://')) {
+        $parts = parse_url($address);
+        // a path or query would be ignored, the server answers every path
+        if ($parts === false || ($parts['scheme'] ?? '') !== 'http' || !isset($parts['host'], $parts['port']) || count($parts) !== 3) {
             throw new InvalidArgumentException("Invalid address < $address >, expected http://host:port");
         }
 

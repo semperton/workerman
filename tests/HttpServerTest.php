@@ -87,11 +87,26 @@ final class HttpServerTest extends TestCase
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
     }
 
-    public function testInvalidAddress(): void
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidAddresses(): iterable
+    {
+        yield 'https' => ['https://0.0.0.0:8443'];
+        yield 'tcp' => ['tcp://0.0.0.0:8080'];
+        yield 'empty' => ['http://'];
+        yield 'missing port' => ['http://0.0.0.0'];
+        yield 'missing host' => ['http://:8080'];
+        yield 'path' => ['http://0.0.0.0:8080/api'];
+        yield 'credentials' => ['http://user@0.0.0.0:8080'];
+    }
+
+    #[DataProvider('invalidAddresses')]
+    public function testInvalidAddress(string $address): void
     {
         $this->expectException(InvalidArgumentException::class);
 
-        $this->server()->listen('https://0.0.0.0:8443');
+        $this->server()->listen($address);
     }
 
     public function testWorker(): void
