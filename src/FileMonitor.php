@@ -74,7 +74,7 @@ final readonly class FileMonitor
     }
 
     /**
-     * Directories are included, their time changes when files are added or removed
+     * Directories are included, the monitored ones too, their time changes when files are added or removed
      */
     private function lastModified(): int
     {
@@ -85,6 +85,9 @@ final readonly class FileMonitor
             if (!is_dir($path)) {
                 continue;
             }
+
+            // the iterator only returns what the directory contains
+            $lastModified = max($lastModified, $this->modified(new SplFileInfo($path)));
 
             $files = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),

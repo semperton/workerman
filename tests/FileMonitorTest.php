@@ -34,6 +34,7 @@ final class FileMonitorTest extends TestCase
     protected function tearDown(): void
     {
         @unlink($this->dir . '/sub/file.php');
+        @unlink($this->dir . '/file.php');
         @unlink($this->dir . '/broken');
         @rmdir($this->dir . '/sub');
         @rmdir($this->dir);
@@ -48,6 +49,18 @@ final class FileMonitorTest extends TestCase
         // adding the file changed the time of the directory
         touch($this->dir . '/sub', 1000);
         self::assertSame(2000, $this->lastModified($monitor));
+    }
+
+    public function testRemovedFile(): void
+    {
+        touch($this->dir . '/file.php', 1000);
+        touch($this->dir, 1000);
+        $monitor = new FileMonitor([$this->dir]);
+        self::assertSame(1000, $this->lastModified($monitor));
+
+        // removing the file changes the time of the monitored directory itself
+        unlink($this->dir . '/file.php');
+        self::assertGreaterThan(1000, $this->lastModified($monitor));
     }
 
     public function testBrokenSymlink(): void
