@@ -70,6 +70,10 @@ return [
     // header fields, rfc 9112 2.2 and 5
     'bare lf' => ["GET / HTTP/1.1\n{$host}\n", [408], false],
     'bare cr' => ["{$get}X-A: a\rb\r\n\r\n", [400], false],
+    // a lf right before the crlf, a proxy that reads it as the line end sees an empty line, the end of the head
+    'lf at the end of the request line' => ["GET / HTTP/1.1\n\r\n{$host}\r\n", [400], false],
+    'lf at the end of a header' => ["{$get}X-A: a\n\r\nContent-Length: 4\r\n\r\nping", [400], false],
+    'lf at the end of the host' => ["GET / HTTP/1.1\r\nHost: localhost\n\r\n\r\n", [400], false],
     'obs-fold' => ["{$get}X-A: a\r\n b\r\n\r\n", [400], false],
     'obs-fold transfer-encoding' => ["{$post}Transfer-Encoding:\r\n chunked\r\n\r\n0\r\n\r\n", [400], false],
     'space before colon' => ["GET / HTTP/1.1\r\nHost : localhost\r\n\r\n", [400], false],

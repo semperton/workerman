@@ -160,6 +160,21 @@ final class HttpProtocolTest extends TestCase
     }
 
     /**
+     * A proxy that reads a bare LF or CR as a line end would see another head (request smuggling), rfc 9112 2.2
+     */
+    #[TestWith(["GET / HTTP/1.1\n\r\nHost: localhost\r\n\r\n"], 'request line')]
+    #[TestWith(["GET / HTTP/1.1\r\nHost: localhost\r\nX-A: a\n\r\n\r\n"], 'header value')]
+    #[TestWith(["GET / HTTP/1.1\r\nHost: localhost\n\r\n\r\n"], 'host')]
+    #[TestWith(["GET / HTTP/1.1\r\nHost: localhost\r\nX-A: a\rb\r\n\r\n"], 'bare cr')]
+    public function testBareLineEnds(string $buffer): void
+    {
+        $socket = new SocketConnection();
+
+        self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
+        self::assertStringStartsWith('HTTP/1.1 400 ', $socket->read());
+    }
+
+    /**
      * Workerman passes requests it has seen before from its cache, without decoding them again
      */
     public function testChunkedRequestFromTheCache(): void

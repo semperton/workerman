@@ -174,6 +174,7 @@ final class RequestConverterTest extends TestCase
     #[TestWith(['a:65536'])]
     #[TestWith(['a:99999'])]
     #[TestWith(['a,b'])]
+    #[TestWith(["localhost\n"])] // '$' would match before a final line feed
     public function testInvalidHost(string $host): void
     {
         $this->expectException(InvalidArgumentException::class);

@@ -16,6 +16,7 @@ use function str_ends_with;
 use function strlen;
 use function strpos;
 use function substr;
+use function substr_count;
 
 /**
  * Workerman's HTTP protocol, delegated to and extended by:
@@ -23,6 +24,7 @@ use function substr;
  * - the time a request head started to arrive, slow heads are answered with a 408 by ConnectionTimeouts
  * - the body size limit, Workerman only limits the whole request, and chunked bodies once a chunk is complete
  * - the syntax of chunk lines and trailers, Workerman only reads the chunk sizes
+ * - the line ends of the head, Workerman splits it at CRLF and keeps a bare LF or CR in the values
  *
  * @internal
  */
@@ -67,6 +69,13 @@ final class HttpProtocol
         // Http has rejected the request
         if ($connection->getStatus() !== TcpConnection::STATUS_ESTABLISHED) {
             return $length;
+        }
+
+        // a proxy that reads a bare LF or CR as a line end would see another head (request smuggling), rfc 9112 2.2
+        $lines = substr_count($buffer, "\r\n", 0, $headEnd);
+        if (substr_count($buffer, "\n", 0, $headEnd) !== $lines || substr_count($buffer, "\r", 0, $headEnd) !== $lines) {
+            $connection->end(self::BAD_REQUEST, true);
+            return 0;
         }
 
         $bufferLength = strlen($buffer);

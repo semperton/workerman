@@ -90,7 +90,7 @@ Other bodies (e.g. JSON) are left to the application.
 - Keep-alive, pipelining, HTTP/1.0 and chunked request bodies are supported.
 - `Expect: 100-continue` is answered right away, clients like curl would otherwise wait a second before sending larger bodies.
 - Invalid requests get a `400`, e.g. a missing or invalid `Host` header, which could change the path of the uri, an invalid header value,
-  both `Content-Length` and `Transfer-Encoding`, or invalid chunk extensions and trailers (request smuggling),
+  both `Content-Length` and `Transfer-Encoding`, invalid chunk extensions and trailers, or a bare LF or CR in the head (request smuggling),
   and request targets with a fragment or non-ASCII bytes. Too large heads get a `431`, too large bodies a `413`.
 - The security tests send hostile requests, from raw bytes to slow clients, see [security/](security/README.md).
 - Error responses close the connection gracefully, so clients receive them even if they are still sending.
