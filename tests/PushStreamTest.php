@@ -65,6 +65,7 @@ final class PushStreamTest extends TestCase
         $called = false;
         $stream = new PushStream();
         $stream->onClose(static fn() => throw new RuntimeException('Failed'));
+        $stream->onClose(static fn() => throw new RuntimeException('Failed again'));
         $stream->onClose(static function () use (&$called): void {
             $called = true;
         });
@@ -73,6 +74,7 @@ final class PushStreamTest extends TestCase
             $stream->close();
             self::fail('The error is thrown');
         } catch (RuntimeException $exception) {
+            // the first one
             self::assertSame('Failed', $exception->getMessage());
         }
 

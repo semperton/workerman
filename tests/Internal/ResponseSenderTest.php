@@ -26,11 +26,14 @@ use Workerman\Protocols\Http\Request;
 
 use function explode;
 use function hexdec;
+use function preg_match;
 use function str_repeat;
 use function strlen;
 use function strpos;
+use function strtotime;
 use function substr;
 use function substr_count;
+use function time;
 use function uniqid;
 
 final class ResponseSenderTest extends TestCase
@@ -61,7 +64,26 @@ final class ResponseSenderTest extends TestCase
         [$head, $body] = $this->send(new Response(204, ['Content-Length' => '5'], 'hello'));
 
         self::assertStringNotContainsString('Content-Length', $head);
+        self::assertStringNotContainsString('Transfer-Encoding', $head);
         self::assertSame('', $body);
+    }
+
+    public function testPartialContent(): void
+    {
+        [$head, $body] = $this->send(new Response(206, ['Content-Range' => 'bytes 0-4/10'], 'hello'));
+
+        self::assertStringContainsString("\r\nContent-Length: 5", $head);
+        self::assertSame('hello', $body);
+    }
+
+    public function testDate(): void
+    {
+        [$head] = $this->send(new Response(200, ['Content-Type' => 'text/plain'], 'hello'));
+
+        self::assertSame(1, substr_count($head, "\r\nDate: "));
+        self::assertMatchesRegularExpression('/\r\nDate: [A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT(\r\n|$)/', $head);
+        preg_match('/\r\nDate: ([^\r]+)/', $head, $matches);
+        self::assertEqualsWithDelta(time(), strtotime($matches[1] ?? ''), 2);
     }
 
     public function testResetContent(): void
@@ -79,7 +101,8 @@ final class ResponseSenderTest extends TestCase
     public function testNotModified(): void
     {
         $socket = new SocketConnection();
-        $this->sender()->send($socket->connection, new Response(304, ['Content-Length' => '5'], 'hello'), 'GET', '1.1', '');
+        // without a body, like the application would send it
+        $this->sender()->send($socket->connection, new Response(304, ['Content-Length' => '5']), 'GET', '1.1', '');
         [$head, $body] = $this->split($socket->read());
 
         // the length a 200 would have
@@ -294,15 +317,17 @@ final class ResponseSenderTest extends TestCase
     public function testShorterBody(int $size): void
     {
         $content = str_repeat('a', $size);
+        $logger = new ArrayLogger();
         $socket = new SocketConnection();
         $response = new Response(200, [], new ReportedSizeStream(Stream::create($content), $size + 10));
-        $this->sender()->send($socket->connection, $response, 'GET', '1.1', '');
+        (new ResponseSender($logger))->send($socket->connection, $response, 'GET', '1.1', '');
         [$head, $body] = $this->split($socket->read());
 
         // the client notices the incomplete body, as the connection is closed
         self::assertStringContainsString('Content-Length: ' . ($size + 10), $head);
         self::assertSame($content, $body);
         self::assertTrue($socket->ended());
+        self::assertCount(1, $logger->messages);
     }
 
     #[DataProvider('sizes')]
@@ -331,12 +356,16 @@ final class ResponseSenderTest extends TestCase
     public function testChunked(): void
     {
         $content = str_repeat('0123456789', 10_000);
+        $socket = new SocketConnection();
         $response = new Response(200, [], new ReportedSizeStream(Stream::create($content)));
-        [$head, $body] = $this->send($response);
+        $this->sender()->send($socket->connection, $response, 'GET', '1.1', '');
+        [$head, $body] = $this->split($socket->read());
 
         self::assertStringContainsString("\r\nTransfer-Encoding: chunked", $head);
         self::assertStringNotContainsString('Content-Length', $head);
         self::assertSame($content, $this->decodeChunked($body));
+        // the last chunk ends the body, the connection stays open
+        self::assertSame(TcpConnection::STATUS_ESTABLISHED, $socket->connection->getStatus());
     }
 
     public function testHttp10UnknownSize(): void
@@ -363,11 +392,22 @@ final class ResponseSenderTest extends TestCase
         // waits for the client
         self::assertNotNull($socket->connection->onBufferDrain);
 
+        // a pipelined request waits for the response
+        $received = new ArrayObject();
+        $socket->connection->onMessage = static function (TcpConnection $connection, Request $request) use ($received): void {
+            $received->append($request->path());
+        };
+        // unique, workerman passes cached requests even while reading is paused, the event loop doesn't read then
+        $path = '/' . uniqid('next-');
+        $socket->write("GET $path HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        self::assertSame([], $received->getArrayCopy());
+
         [$head, $body] = $this->split($socket->read());
 
         self::assertStringContainsString("\r\nContent-Length: " . strlen($content), $head);
         self::assertSame($content, $body);
         self::assertSame(TcpConnection::STATUS_ESTABLISHED, $socket->connection->getStatus());
+        self::assertSame([$path], $received->getArrayCopy());
     }
 
     public function testClientGone(): void
@@ -553,6 +593,7 @@ final class ResponseSenderTest extends TestCase
 
         self::assertGreaterThan(0, $pushed);
         [, $body] = $this->split($socket->read());
+        // the body hasn't ended yet
         self::assertSame(str_repeat($data, $pushed), $this->decodeChunked($body . "0\r\n\r\n"));
         // the client has read, pushes are taken again
         self::assertTrue($stream->push('a'));
@@ -673,17 +714,23 @@ final class ResponseSenderTest extends TestCase
         return [substr($data, 0, $pos), substr($data, $pos + 4)];
     }
 
+    /**
+     * Fails for invalid framing, e.g. a missing last chunk, which would keep clients waiting
+     */
     private function decodeChunked(string $data): string
     {
         $body = '';
 
         while (true) {
             [$size] = explode("\r\n", $data, 2);
+            self::assertMatchesRegularExpression('/^[0-9a-f]+$/D', $size, 'a chunk size');
             $length = (int) hexdec($size);
+            $start = strlen($size) + 2;
             if ($length === 0) {
+                self::assertSame("\r\n", substr($data, $start), 'the last chunk ends the body');
                 return $body;
             }
-            $start = strlen($size) + 2;
+            self::assertSame("\r\n", substr($data, $start + $length, 2), 'the chunk data ends with a crlf');
             $body .= substr($data, $start, $length);
             $data = substr($data, $start + $length + 2);
         }
