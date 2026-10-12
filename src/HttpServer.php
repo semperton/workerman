@@ -21,13 +21,16 @@ use Workerman\Timer;
 use Workerman\Worker;
 
 use function count;
+use function is_finite;
 use function microtime;
 use function parse_url;
 use function posix_getpid;
 use function posix_kill;
 use function register_shutdown_function;
 use function substr;
+use function var_export;
 
+use const PHP_INT_MAX;
 use const SIGQUIT;
 
 /**
@@ -105,17 +108,21 @@ final class HttpServer
             throw new InvalidArgumentException("Invalid workers < $workers >, expected at least 1");
         }
 
-        if ($maxBodySize < 0 || $maxRequests < 0) {
-            throw new InvalidArgumentException("Invalid limits < $maxBodySize, $maxRequests >, expected 0 or more");
+        // the package size, the body and the head, has to fit into an int
+        if ($maxBodySize < 0 || $maxBodySize > PHP_INT_MAX - self::MAX_HEAD_SIZE || $maxRequests < 0) {
+            throw new InvalidArgumentException("Invalid limits < $maxBodySize, $maxRequests >, expected 0 or more, a body size below PHP_INT_MAX");
         }
 
-        if ($idleTimeout < 0 || $headerTimeout < 0) {
-            throw new InvalidArgumentException("Invalid timeouts < $idleTimeout, $headerTimeout >, expected seconds or 0 = never");
+        // NAN would pass every comparison, var_export() as PHP warns about NAN in strings
+        if (!is_finite($idleTimeout) || !is_finite($headerTimeout) || $idleTimeout < 0 || $headerTimeout < 0) {
+            $timeouts = var_export($idleTimeout, true) . ', ' . var_export($headerTimeout, true);
+            throw new InvalidArgumentException("Invalid timeouts < $timeouts >, expected seconds or 0 = never");
         }
 
         // a stop has to end, e.g. a client that doesn't read would keep the old worker forever
-        if ($stopTimeout <= 0) {
-            throw new InvalidArgumentException("Invalid stop timeout < $stopTimeout >, expected seconds > 0");
+        if (!is_finite($stopTimeout) || $stopTimeout <= 0) {
+            $timeout = var_export($stopTimeout, true);
+            throw new InvalidArgumentException("Invalid stop timeout < $timeout >, expected seconds > 0");
         }
 
         // tcp with the protocol set separately, as workerman would choose its own http protocol

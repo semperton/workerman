@@ -27,6 +27,9 @@ use Workerman\Worker;
 use function pcntl_signal;
 use function pcntl_signal_dispatch;
 
+use const INF;
+use const NAN;
+use const PHP_INT_MAX;
 use const SIG_DFL;
 use const SIGQUIT;
 
@@ -115,6 +118,14 @@ final class HttpServerTest extends TestCase
         yield 'header timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, headerTimeout: -1)];
         yield 'stop timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, stopTimeout: 0)];
         yield 'negative stop timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, stopTimeout: -1)];
+        // a stop would never end
+        yield 'nan stop timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, stopTimeout: NAN)];
+        yield 'infinite stop timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, stopTimeout: INF)];
+        yield 'nan idle timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, idleTimeout: NAN)];
+        yield 'infinite idle timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, idleTimeout: INF)];
+        yield 'nan header timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, headerTimeout: NAN)];
+        // the package size, body and head, would exceed an int
+        yield 'max body size too large' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, maxBodySize: PHP_INT_MAX)];
     }
 
     /**
@@ -126,6 +137,19 @@ final class HttpServerTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         $listen($this->server());
+    }
+
+    public function testZeroLimits(): void
+    {
+        $server = $this->server();
+        $worker = AddedWorker::of(static fn() => $server->listen(self::ADDRESS, maxBodySize: 0, maxRequests: 0, idleTimeout: 0, headerTimeout: 0));
+
+        // e.g. a server that accepts no bodies
+        $socket = new SocketConnection();
+        self::assertNotNull($worker->onConnect);
+        ($worker->onConnect)($socket->connection);
+        self::assertSame(16 * 1024, $socket->connection->maxPackageSize);
+        self::assertSame(0, $socket->connection->context?->maxBodySize);
     }
 
     public function testLifecycleAfterError(): void
