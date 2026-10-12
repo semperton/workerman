@@ -1,0 +1,21 @@
+# Plain HTTP on :8080, no TLS, compression or access log
+{
+	auto_https off
+	admin off
+	log {
+		level ERROR
+	}
+}
+
+http://:8080 {
+	root * /bench/server
+	php_server {
+		worker {
+			file /bench/server/worker.php
+			# 1 per cpu, faster than 8 workers on 4 cpus (14.8k vs 13.7k req/s plaintext)
+			num 4
+			# every path goes to the worker, without looking for files first
+			match *
+		}
+	}
+}

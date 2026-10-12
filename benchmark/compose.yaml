@@ -35,6 +35,16 @@ services:
     image: php-server-bench/workerman
     command: php server.php start
 
+  roadrunner:
+    <<: *server
+    build: { context: .., dockerfile: benchmark/servers/roadrunner/Dockerfile }
+    image: php-server-bench/roadrunner
+
+  frankenphp:
+    <<: *server
+    build: { context: .., dockerfile: benchmark/servers/frankenphp/Dockerfile }
+    image: php-server-bench/frankenphp
+
   php-fpm:
     <<: *server
     build: { context: .., dockerfile: benchmark/servers/nginx-fpm/Dockerfile }

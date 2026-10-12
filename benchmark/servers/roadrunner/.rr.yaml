@@ -1,0 +1,19 @@
+# Only the http plugin, no rpc, metrics or middleware
+version: "3"
+
+server:
+  command: "php worker.php"
+  relay: pipes
+
+http:
+  address: 0.0.0.0:8080
+  # MB, the default of semperton/workerman
+  max_request_size: 1
+  pool:
+    # 2 per cpu, faster than 4 workers on 4 cpus (12.5k vs 10.8k req/s plaintext)
+    num_workers: 8
+    max_jobs: 0
+
+logs:
+  mode: production
+  level: error

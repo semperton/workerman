@@ -18,6 +18,8 @@ const TARGETS = [
     'semperton-event' => 'semperton/workerman (event)',
     'semperton-select' => 'semperton/workerman (select)',
     'workerman' => 'Workerman, without PSR-7',
+    'roadrunner' => 'RoadRunner',
+    'frankenphp' => 'FrankenPHP, worker mode',
     'nginx-fpm' => 'nginx + PHP-FPM',
 ];
 

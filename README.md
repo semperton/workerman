@@ -206,16 +206,19 @@ In production, run the server behind a reverse proxy that handles TLS, compressi
 
 ## Performance
 
-Requests per second for the same PSR-15 application on 4 CPU cores,
+Requests per second for the same PSR-15 application on 4 CPU cores, compared with other ways to run PHP,
 see [benchmark/](benchmark/README.md) for the method, all scenarios, latencies, memory and how each server handles HTTP edge cases.
 
 | Server | Plaintext | Browser-like GET | Form POST | New connection per request |
 |---|---:|---:|---:|---:|
-| Workerman, without PSR-7 | 199,151 | 156,519 | 174,371 | 31,467 |
-| **semperton/workerman** (`select()` loop) | **70,479** | **52,485** | **60,675** | **39,072** |
-| nginx + PHP-FPM | 12,238 | 11,187 | 11,717 | 10,679 |
+| Workerman, without PSR-7 | 191,896 | 153,450 | 170,979 | 30,705 |
+| **semperton/workerman** (`select()` loop) | **75,232** | **55,091** | **63,371** | **41,156** |
+| FrankenPHP, worker mode | 14,404 | 14,845 | 15,696 | 11,429 |
+| nginx + PHP-FPM | 11,794 | 10,558 | 11,477 | 10,629 |
+| RoadRunner | 11,768 | 7,701 | 9,307 | 8,434 |
 
 Workerman without PSR-7 serves about three times as many requests, which is the cost of creating PSR-7 objects for every request.
+RoadRunner and FrankenPHP run a Go server next to the PHP workers on the same 4 cores, in exchange they serve HTTP/2, TLS and static files themselves.
 With a real application, the time spent in the application and its I/O outweighs these differences.
 
 ## Limitations
