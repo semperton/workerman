@@ -6,6 +6,7 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Semperton\Workerman\FileMonitor;
 use Semperton\Workerman\HttpServer;
 use Semperton\Workerman\PushStream;
 use Semperton\Workerman\Tests\Fixtures\RepeatedStream;
@@ -15,12 +16,13 @@ use Workerman\Timer;
 use Workerman\Worker;
 
 /**
- * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout> <stopTimeout> <clientPort> <keepClient>
+ * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout> <stopTimeout> <clientPort> <keepClient> <monitor>
  * Responds with the pid of the worker, a 4 MB body for '/large', a 1 GB body for '/huge', the request body for '/echo',
  * an event every 100 ms for '/events' ('/events-error' throws once the client is gone),
- * or whether workerStopping() was called for '/stopping'
+ * whether workerStopping() was called for '/stopping', or server params of the request for '/server' (json)
  * workerStopping() writes the pid of the worker to <tmp>/semperton-workerman-<port>.stopping
  * With a client port, every worker keeps an async connection to it, like a database client, closed by workerStopping() unless kept
+ * With a monitor directory, a FileMonitor reloads the workers when it changes
  */
 
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
@@ -33,6 +35,7 @@ $headerTimeout = (float) ($argv[5] ?? 20);
 $stopTimeout = (float) ($argv[6] ?? 30);
 $clientPort = (int) ($argv[7] ?? 0);
 $keepClient = (bool) ($argv[8] ?? false);
+$monitor = $argv[9] ?? '';
 
 $files = sys_get_temp_dir() . '/semperton-workerman-' . $port;
 Worker::$pidFile = $files . '.pid';
@@ -64,6 +67,10 @@ $handler = new class ($files . '.stopping', $keepClient) implements RequestHandl
             '/events' => new Response(200, ['Content-Type' => 'text/event-stream'], $this->events()),
             '/events-error' => new Response(200, ['Content-Type' => 'text/event-stream'], $this->events(fail: true)),
             '/stopping' => new Response(body: $this->stopping ? 'yes' : 'no'),
+            '/server' => new Response(body: json_encode([
+                'uri' => (string) $request->getUri(),
+                ...array_intersect_key($request->getServerParams(), array_flip(['SERVER_ADDR', 'SERVER_PORT', 'SERVER_NAME', 'SERVER_PROTOCOL'])),
+            ], JSON_THROW_ON_ERROR)),
             default => new Response(body: (string) getmypid()),
         };
     }
@@ -112,5 +119,9 @@ $server->listen(
     headerTimeout: $headerTimeout,
     stopTimeout: $stopTimeout,
 );
+
+if ($monitor !== '') {
+    (new FileMonitor([$monitor], 0.1))->listen();
+}
 
 Worker::runAll();

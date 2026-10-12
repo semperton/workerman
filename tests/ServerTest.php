@@ -10,9 +10,12 @@ use Semperton\Workerman\Tests\Fixtures\ServerProcess;
 
 use function fclose;
 use function file_get_contents;
+use function json_decode;
 use function microtime;
+use function mkdir;
 use function posix_kill;
 use function proc_get_status;
+use function rmdir;
 use function str_repeat;
 use function stream_socket_get_name;
 use function stream_socket_server;
@@ -20,9 +23,13 @@ use function strlen;
 use function strrpos;
 use function substr;
 use function sys_get_temp_dir;
+use function time;
+use function touch;
+use function uniqid;
 use function unlink;
 use function usleep;
 
+use const JSON_THROW_ON_ERROR;
 use const SIGUSR2;
 
 /**
@@ -54,7 +61,7 @@ final class ServerTest extends TestCase
     public function testPipelining(): void
     {
         $client = new Client(self::$port);
-        // the streamed response pauses reading, the next requests wait for it
+        // the responses are sent in order, the large one is sent at once, see ResponseSenderTest for streamed ones
         $client->write(self::GET . self::GET_LARGE . "POST /echo HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\n\r\nping");
 
         self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $client->response()[0]);
@@ -74,6 +81,21 @@ final class ServerTest extends TestCase
 
         $client->write('ping');
         self::assertSame('ping', $client->response()[1]);
+    }
+
+    public function testHttp10WithoutHost(): void
+    {
+        $client = new Client(self::$port);
+        [, $body] = $client->request("GET /server HTTP/1.0\r\n\r\n");
+
+        // the local address is the host, in any order
+        self::assertEquals([
+            'uri' => 'http://127.0.0.1:' . self::$port . '/server',
+            'SERVER_ADDR' => '127.0.0.1',
+            'SERVER_PORT' => self::$port,
+            'SERVER_NAME' => '127.0.0.1',
+            'SERVER_PROTOCOL' => 'HTTP/1.0',
+        ], json_decode($body, true, flags: JSON_THROW_ON_ERROR));
     }
 
     public function testChunkedBody(): void
@@ -222,7 +244,7 @@ final class ServerTest extends TestCase
     public function testStopTimeout(): void
     {
         // without an idle timeout, only the stop timeout ends a client that doesn't read
-        [$process, $port] = ServerProcess::start(idleTimeout: 0, stopTimeout: 1);
+        [$process, $port] = ServerProcess::start(idleTimeout: 0, stopTimeout: 2);
 
         try {
             [, $pid] = (new Client($port))->request(self::GET);
@@ -233,14 +255,41 @@ final class ServerTest extends TestCase
             usleep(100_000);
 
             posix_kill(proc_get_status($process)['pid'], SIGUSR2);
+            $stopped = microtime(true);
             usleep(200_000);
 
-            // within the 5 s read timeout of the client
+            // the new worker answers once the old one has exited, within the 5 s read timeout of the client
             self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
+            self::assertGreaterThanOrEqual(1.9, microtime(true) - $stopped, 'waited for the busy connection');
             self::assertLessThan(1024 * 1024 * 1024, strlen($busy->readAll()), 'the response was cut');
             self::assertTrue($busy->closed());
         } finally {
             ServerProcess::stop($process);
+        }
+    }
+
+    public function testFileMonitorReload(): void
+    {
+        $dir = sys_get_temp_dir() . '/' . uniqid('semperton-monitor-');
+        mkdir($dir);
+        [$process, $port] = ServerProcess::start(monitor: $dir);
+
+        try {
+            [, $pid] = (new Client($port))->request(self::GET);
+
+            // checked every 100 ms, the workers are reloaded gracefully
+            touch($dir . '/file.php', time() + 10);
+            $deadline = microtime(true) + 5.0;
+            do {
+                usleep(100_000);
+                [, $current] = (new Client($port))->request(self::GET);
+            } while ($current === $pid && microtime(true) < $deadline);
+
+            self::assertNotSame($pid, $current);
+        } finally {
+            ServerProcess::stop($process);
+            @unlink($dir . '/file.php');
+            @rmdir($dir);
         }
     }
 

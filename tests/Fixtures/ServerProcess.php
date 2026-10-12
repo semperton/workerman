@@ -34,6 +34,7 @@ final class ServerProcess
 
     /**
      * @param int $clientPort every worker keeps an async connection to it, closed when it stops unless kept
+     * @param string $monitor a directory watched by a FileMonitor, '' = none
      * @return array{resource, int}
      */
     public static function start(
@@ -43,6 +44,7 @@ final class ServerProcess
         float $stopTimeout = 30,
         int $clientPort = 0,
         bool $keepClient = false,
+        string $monitor = '',
     ): array {
         // a free port, assigned by the os
         $socket = stream_socket_server('tcp://127.0.0.1:0');
@@ -57,7 +59,7 @@ final class ServerProcess
         $process = proc_open(
             [
                 PHP_BINARY, __DIR__ . '/server.php', 'start', (string) $port, (string) $maxRequests,
-                (string) $idleTimeout, (string) $headerTimeout, (string) $stopTimeout, (string) $clientPort, $keepClient ? '1' : '',
+                (string) $idleTimeout, (string) $headerTimeout, (string) $stopTimeout, (string) $clientPort, $keepClient ? '1' : '', $monitor,
             ],
             [['file', '/dev/null', 'r'], $output, $output],
             $pipes,

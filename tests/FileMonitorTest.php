@@ -10,6 +10,9 @@ use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use Semperton\Workerman\FileMonitor;
 use Semperton\Workerman\Tests\Fixtures\AddedWorker;
+use Workerman\Events\Select;
+use Workerman\Timer;
+use Workerman\Worker;
 
 use function mkdir;
 use function rmdir;
@@ -79,6 +82,29 @@ final class FileMonitorTest extends TestCase
         // reloading would restart the monitor, it would miss the change
         self::assertFalse($worker->reloadable);
         self::assertNotNull($worker->onWorkerStart);
+    }
+
+    public function testStart(): void
+    {
+        $monitor = new FileMonitor([$this->dir]);
+        $start = new ReflectionMethod($monitor, 'start');
+        // the loop doesn't run, the check is only registered
+        $loop = new Select();
+        Timer::init($loop);
+
+        try {
+            $start->invoke($monitor);
+            self::assertSame(1, $loop->getTimerCount());
+            Timer::delAll();
+
+            // the files of a daemon are deployed, not edited
+            Worker::$daemonize = true;
+            $start->invoke($monitor);
+            self::assertSame(0, $loop->getTimerCount());
+        } finally {
+            Worker::$daemonize = false;
+            Timer::delAll();
+        }
     }
 
     #[TestWith([0.0])]
