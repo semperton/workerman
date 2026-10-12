@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Semperton\Workerman\Tests\Fixtures;
 
 use RuntimeException;
+use Semperton\Workerman\Internal\HttpProtocol;
 use Workerman\Connection\TcpConnection;
 use Workerman\Events\Select;
 use Workerman\Timer;
@@ -24,6 +25,7 @@ use const STREAM_SOCK_STREAM;
 
 /**
  * A Workerman connection with a real socket, the other end acts as the client
+ * Received data is parsed with the server's protocol, data sent with raw = false is encoded by it, like in the server
  */
 final class SocketConnection
 {
@@ -46,6 +48,7 @@ final class SocketConnection
         $eventLoop = new Select();
         Timer::init($eventLoop);
         $this->connection = new TcpConnection($eventLoop, $server, $remoteAddress);
+        $this->connection->protocol = HttpProtocol::class;
     }
 
     /**

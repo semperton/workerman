@@ -6,7 +6,6 @@ namespace Semperton\Workerman\Tests\Internal;
 
 use PHPUnit\Framework\TestCase;
 use Semperton\Workerman\Internal\ConnectionTimeouts;
-use Semperton\Workerman\Internal\HttpProtocol;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Connection\TcpConnection;
 
@@ -130,7 +129,6 @@ final class ConnectionTimeoutsTest extends TestCase
     private function socket(): SocketConnection
     {
         $socket = new SocketConnection();
-        $socket->connection->protocol = HttpProtocol::class;
         $socket->connection->onMessage = static function (): void {};
 
         return $socket;

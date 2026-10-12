@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Tests\Internal;
 
+use ArrayObject;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
-use Semperton\Workerman\Internal\HttpProtocol;
 use Semperton\Workerman\Internal\ResponseSender;
 use Semperton\Workerman\PushStream;
 use Semperton\Workerman\Tests\Fixtures\ArrayLogger;
@@ -19,6 +19,7 @@ use Semperton\Workerman\Tests\Fixtures\ReportedSizeStream;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use UnexpectedValueException;
 use Workerman\Connection\TcpConnection;
+use Workerman\Protocols\Http\Request;
 
 use function explode;
 use function hexdec;
@@ -27,6 +28,7 @@ use function strlen;
 use function strpos;
 use function substr;
 use function substr_count;
+use function uniqid;
 
 final class ResponseSenderTest extends TestCase
 {
@@ -161,7 +163,6 @@ final class ResponseSenderTest extends TestCase
     public function testCloseGracefully(): void
     {
         $socket = new SocketConnection();
-        $socket->connection->protocol = HttpProtocol::class;
         $socket->connection->onMessage = static function (): void {};
         // a pipelined request, which won't be answered
         $socket->write("GET /next HTTP/1.1\r\n");
@@ -363,18 +364,23 @@ final class ResponseSenderTest extends TestCase
         self::assertSame("7\r\ndata: b\r\n", $socket->read());
         self::assertFalse($closed);
 
+        // a pipelined request waits for the end of the body
+        $received = new ArrayObject();
+        $socket->connection->onMessage = static function (TcpConnection $connection, Request $request) use ($received): void {
+            $received->append($request->path());
+        };
+        // unique, workerman passes cached requests even while reading is paused, the event loop doesn't read then
+        $path = '/' . uniqid('next-');
+        $socket->write("GET $path HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        self::assertSame([], $received->getArrayCopy());
+
         $stream->end();
         self::assertSame("0\r\n\r\n", $socket->read());
         self::assertTrue($closed);
         self::assertFalse($stream->push('data: c'));
         // ready for the next request
         self::assertSame(TcpConnection::STATUS_ESTABLISHED, $socket->connection->getStatus());
-        $received = '';
-        $socket->connection->onMessage = static function (TcpConnection $connection, string $data) use (&$received): void {
-            $received = $data;
-        };
-        $socket->write('next');
-        self::assertSame('next', $received);
+        self::assertSame([$path], $received->getArrayCopy());
     }
 
     public function testPushEndedBeforeSend(): void
