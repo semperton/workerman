@@ -36,7 +36,7 @@ final class HttpProtocol
     private const BAD_REQUEST = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 
     // rfc 9112 7.1.1 and rfc 9110 5.5, a token may contain '~'
-    private const TOKEN = '[!#$%&\'*+\-.^_`|~0-9A-Za-z]+';
+    public const TOKEN = '[!#$%&\'*+\-.^_`|~0-9A-Za-z]+';
     private const CHUNK_LINE = '/^([0-9A-Fa-f]+)(?:[ \t]*;[ \t]*' . self::TOKEN
         . '(?:[ \t]*=[ \t]*(?:' . self::TOKEN . '|"(?:[\t \x21\x23-\x5b\x5d-\x7e\x80-\xff]|\\\\[\t\x20-\x7e\x80-\xff])*"))?)*$/D';
     private const TRAILER_LINE = '/^' . self::TOKEN . ':[\t\x20-\x7e\x80-\xff]*$/D';

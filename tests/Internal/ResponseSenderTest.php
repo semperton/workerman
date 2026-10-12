@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Semperton\Workerman\Tests\Internal;
 
 use ArrayObject;
+use Closure;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -17,6 +18,7 @@ use Semperton\Workerman\Tests\Fixtures\ArrayLogger;
 use Semperton\Workerman\Tests\Fixtures\FailingStream;
 use Semperton\Workerman\Tests\Fixtures\ReportedSizeStream;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
+use Semperton\Workerman\Tests\Fixtures\UnvalidatedResponse;
 use UnexpectedValueException;
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http\Request;
@@ -107,6 +109,37 @@ final class ResponseSenderTest extends TestCase
 
         self::assertStringStartsWith("HTTP/1.1 200 \r\n", $head);
         self::assertStringNotContainsString('X-Injected', $head);
+    }
+
+    /**
+     * @return iterable<string, array{Closure(): ResponseInterface}>
+     */
+    public static function invalidHeaders(): iterable
+    {
+        // nyholm validates a value with '$', which matches before a final line feed
+        yield 'value ending in lf' => [static fn() => new Response(302, ['Location' => "/next\n"])];
+        yield 'value with crlf' => [static fn() => new UnvalidatedResponse(['X-A' => ["a\r\nSet-Cookie: injected=1"]])];
+        yield 'value with nul' => [static fn() => new UnvalidatedResponse(['X-A' => ["a\0b"]])];
+        yield 'name with space' => [static fn() => new UnvalidatedResponse(['X A' => ['a']])];
+        yield 'name with colon' => [static fn() => new UnvalidatedResponse(['X-A: b' => ['a']])];
+    }
+
+    /**
+     * Not every PSR-7 implementation validates the headers, a line break would add headers (response splitting)
+     *
+     * @param Closure(): ResponseInterface $response
+     */
+    #[DataProvider('invalidHeaders')]
+    public function testInvalidHeader(Closure $response): void
+    {
+        $socket = new SocketConnection();
+
+        try {
+            $this->sender()->send($socket->connection, $response(), 'GET', '1.1', '');
+            self::fail('Expected an exception');
+        } catch (UnexpectedValueException) {
+            self::assertSame('', $socket->read(), 'nothing sent');
+        }
     }
 
     #[DataProvider('sizes')]

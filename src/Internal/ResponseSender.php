@@ -34,6 +34,7 @@ use function trim;
  * A PushStream body is sent as the application pushes it
  * A body that ends before its announced length closes the connection, so the client notices
  * Exceptions are only thrown before anything was sent, so the caller can still send an error response
+ * Header names and values are validated, not every PSR-7 implementation does
  *
  * @internal
  */
@@ -41,6 +42,9 @@ final class ResponseSender
 {
     private const BUFFER_LIMIT = 2 * 1024 * 1024;
     private const CHUNK_SIZE = 64 * 1024;
+    private const HEADER_NAME = '/^' . HttpProtocol::TOKEN . '$/D';
+    // rfc 9110 5.5, 'D' as '$' would match before a final line feed
+    private const HEADER_VALUE = '/^[\t\x20-\x7e\x80-\xff]*$/D';
 
     private int $dateTime = 0;
     private string $date = '';
@@ -51,7 +55,7 @@ final class ResponseSender
 
     /**
      * @param string $connectionHeader of the request
-     * @throws UnexpectedValueException for interim (1xx) responses
+     * @throws UnexpectedValueException for interim (1xx) responses or invalid headers
      */
     public function send(
         TcpConnection $connection,
@@ -132,6 +136,8 @@ final class ResponseSender
 
     /**
      * The status line and headers, the framing headers of the application are replaced by the server's
+     *
+     * @throws UnexpectedValueException for invalid headers, e.g. a line break would add headers (response splitting)
      */
     private function head(ResponseInterface $response, ?int $contentLength, bool $chunked, bool $keepAlive, bool $http10): string
     {
@@ -145,12 +151,20 @@ final class ResponseSender
         $hasDate = false;
 
         foreach ($response->getHeaders() as $name => $values) {
-            $lowerName = strtolower((string) $name);
+            $name = (string) $name;
+            $lowerName = strtolower($name);
             if ($lowerName === 'content-length' || $lowerName === 'transfer-encoding' || $lowerName === 'connection') {
                 continue;
             }
+            if (preg_match(self::HEADER_NAME, $name) !== 1) {
+                throw new UnexpectedValueException("Invalid response header name < $name >");
+            }
             $hasDate = $hasDate || $lowerName === 'date';
             foreach ($values as $value) {
+                // the value isn't part of the message, it may be large or sensitive
+                if (preg_match(self::HEADER_VALUE, $value) !== 1) {
+                    throw new UnexpectedValueException("Invalid value of the response header < $name >");
+                }
                 $head .= $name . ': ' . $value . "\r\n";
             }
         }

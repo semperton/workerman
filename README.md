@@ -99,7 +99,8 @@ Responses support `HEAD`, `204` / `205` / `304` without a body, and chunked enco
 Bodies larger than 2 MB are streamed and wait for the client to read them (backpressure).
 A body that is shorter than its size closes the connection, so the client notices, a longer one is cut.
 
-The handler should render its errors, e.g. with an error middleware. Uncaught exceptions are logged and answered with an empty `500`, so are interim (`1xx`) responses.
+The handler should render its errors, e.g. with an error middleware. Uncaught exceptions are logged and answered with an empty `500`, so are interim (`1xx`) responses
+and responses with invalid header names or values, e.g. a line break that would add headers (response splitting), not every PSR-7 implementation validates them.
 
 ## Lifecycle
 
