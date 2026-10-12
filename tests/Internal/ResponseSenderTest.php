@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Semperton\Workerman\Tests;
+namespace Semperton\Workerman\Tests\Internal;
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
@@ -11,9 +11,9 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
-use Semperton\Workerman\HttpProtocol;
+use Semperton\Workerman\Internal\HttpProtocol;
+use Semperton\Workerman\Internal\ResponseSender;
 use Semperton\Workerman\PushStream;
-use Semperton\Workerman\ResponseSender;
 use Semperton\Workerman\Tests\Fixtures\ArrayLogger;
 use Semperton\Workerman\Tests\Fixtures\FailingStream;
 use Semperton\Workerman\Tests\Fixtures\ReportedSizeStream;

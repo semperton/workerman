@@ -8,8 +8,8 @@ use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use RuntimeException;
+use Semperton\Workerman\Internal\ResponseSender;
 use Semperton\Workerman\PushStream;
-use Semperton\Workerman\ResponseSender;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Connection\TcpConnection;
 

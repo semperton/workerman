@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Semperton\Workerman\Tests;
+namespace Semperton\Workerman\Tests\Internal;
 
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
-use Semperton\Workerman\HttpProtocol;
+use Semperton\Workerman\Internal\HttpProtocol;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 
 use function str_repeat;

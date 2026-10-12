@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Semperton\Workerman;
+namespace Semperton\Workerman\Internal;
 
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Semperton\Workerman\PushStream;
 use Throwable;
 use UnexpectedValueException;
 use Workerman\Connection\TcpConnection;

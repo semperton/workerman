@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Semperton\Workerman;
+namespace Semperton\Workerman\Internal;
 
 use Closure;
 use WeakMap;

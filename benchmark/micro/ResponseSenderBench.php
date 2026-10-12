@@ -7,7 +7,7 @@ namespace Semperton\Workerman\Benchmark;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
 use PhpBench\Attributes\Revs;
-use Semperton\Workerman\ResponseSender;
+use Semperton\Workerman\Internal\ResponseSender;
 use Semperton\Workerman\Tests\Fixtures\ReportedSizeStream;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 

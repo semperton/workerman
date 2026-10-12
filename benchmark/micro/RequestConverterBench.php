@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Benchmark;
 
-use Semperton\Workerman\RequestConverter;
+use Semperton\Workerman\Internal\RequestConverter;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http\Request;

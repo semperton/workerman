@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Semperton\Workerman;
+namespace Semperton\Workerman\Internal;
 
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http;

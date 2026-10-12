@@ -226,7 +226,7 @@ Interim responses (`1xx`) and protocol upgrades are not supported, see [WebSocke
 ## Versioning
 
 This package follows [Semantic Versioning](https://semver.org). The public API is `HttpServer`, `PushStream`, `WorkerLifecycle` and `FileMonitor`,
-classes and methods marked `@internal` may change in any release. Changes are listed in the [changelog](CHANGELOG.md).
+the classes in `Semperton\Workerman\Internal` and methods marked `@internal` may change in any release. Changes are listed in the [changelog](CHANGELOG.md).
 Security issues are reported privately, see [SECURITY.md](SECURITY.md).
 
 ## License

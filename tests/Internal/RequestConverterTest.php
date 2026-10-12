@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Semperton\Workerman\Tests;
+namespace Semperton\Workerman\Tests\Internal;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
-use Semperton\Workerman\RequestConverter;
+use Semperton\Workerman\Internal\RequestConverter;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Protocols\Http\Request;
 
