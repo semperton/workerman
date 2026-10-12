@@ -12,7 +12,7 @@ use Semperton\Workerman\WorkerLifecycle;
 use Throwable;
 
 /**
- * Records its lifecycle calls, throws the given errors while handling or after a request
+ * Records its lifecycle calls, throws the given errors while handling, after a request or when the worker stops
  */
 final class LifecycleHandler implements RequestHandlerInterface, WorkerLifecycle
 {
@@ -22,6 +22,7 @@ final class LifecycleHandler implements RequestHandlerInterface, WorkerLifecycle
     public function __construct(
         private readonly ?Throwable $requestHandledError = null,
         private readonly ?Throwable $handleError = null,
+        private readonly ?Throwable $workerStoppingError = null,
     ) {}
 
     public function handle(ServerRequestInterface $request): ResponseInterface
@@ -43,6 +44,9 @@ final class LifecycleHandler implements RequestHandlerInterface, WorkerLifecycle
     public function workerStopping(): void
     {
         $this->calls[] = 'stopping';
+        if ($this->workerStoppingError !== null) {
+            throw $this->workerStoppingError;
+        }
     }
 
     /**

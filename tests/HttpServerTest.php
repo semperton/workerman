@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Tests;
 
+use ArrayObject;
 use Closure;
 use InvalidArgumentException;
 use Nyholm\Psr7\Response;
@@ -14,6 +15,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use ReflectionMethod;
 use RuntimeException;
 use Semperton\Workerman\HttpServer;
 use Semperton\Workerman\Tests\Fixtures\AddedWorker;
@@ -50,11 +52,13 @@ final class HttpServerTest extends TestCase
 
     public function testInvalidHost(): void
     {
+        $logger = new ArrayLogger();
         $socket = new SocketConnection();
-        self::handle($this->worker(), $socket->connection, new Request("GET / HTTP/1.1\r\nHost: a#\r\n\r\n"));
+        self::handle($this->worker(logger: $logger), $socket->connection, new Request("GET / HTTP/1.1\r\nHost: a#\r\n\r\n"));
 
         self::assertStringStartsWith("HTTP/1.1 400 Bad Request\r\n", $socket->read());
         self::assertTrue($socket->ended());
+        self::assertSame(['Invalid host < a# >'], $logger->messages);
     }
 
     public function testConverterError(): void
@@ -67,10 +71,13 @@ final class HttpServerTest extends TestCase
             }
         };
 
+        $logger = new ArrayLogger();
         $socket = new SocketConnection();
-        self::handle($this->worker(), $socket->connection, $request);
+        self::handle($this->worker(logger: $logger), $socket->connection, $request);
 
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
+        self::assertTrue($socket->ended());
+        self::assertSame(['Failed'], $logger->messages);
     }
 
     /**
@@ -180,7 +187,61 @@ final class HttpServerTest extends TestCase
         self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
 
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
+        self::assertTrue($socket->ended());
         self::assertSame(['Failed'], $logger->messages);
+    }
+
+    public function testHandlerCreatedAtStart(): void
+    {
+        $created = new ArrayObject();
+        $server = new HttpServer(static function () use ($created): RequestHandlerInterface {
+            $created->append(true);
+            return new LifecycleHandler();
+        });
+        $worker = $this->startedWorker($server);
+
+        // errors of the factory show up when the worker starts
+        self::assertCount(1, $created);
+
+        $socket = new SocketConnection();
+        self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        self::assertCount(1, $created);
+    }
+
+    public function testOnlyOwnConnections(): void
+    {
+        $server = $this->server();
+        $worker = $this->startedWorker($server);
+        $own = new SocketConnection();
+        $own->connection->worker = $worker;
+        // e.g. a database client of the application
+        $other = new SocketConnection();
+
+        // the worker stops, its idle connections are closed
+        self::assertNotNull($worker->onWorkerStop);
+        ($worker->onWorkerStop)($worker);
+        self::checkConnections($server, $worker);
+
+        self::assertTrue($own->ended());
+        self::assertSame(TcpConnection::STATUS_ESTABLISHED, $other->connection->getStatus());
+    }
+
+    public function testWorkerStoppingOnce(): void
+    {
+        $logger = new ArrayLogger();
+        $handler = new LifecycleHandler(workerStoppingError: new RuntimeException('Close failed'));
+        $server = new HttpServer(static fn() => $handler, logger: $logger);
+        $worker = $this->startedWorker($server);
+
+        self::assertNotNull($worker->onWorkerStop);
+        ($worker->onWorkerStop)($worker);
+        // no connections of the worker, called once its last request is handled, and again when the process exits
+        self::checkConnections($server, $worker);
+        self::checkConnections($server, $worker);
+
+        self::assertSame(['stopping'], $handler->calls());
+        self::assertSame(['Close failed'], $logger->messages);
     }
 
     public function testMaxRequests(): void
@@ -260,6 +321,28 @@ final class HttpServerTest extends TestCase
         } finally {
             pcntl_signal(SIGQUIT, SIG_DFL);
         }
+    }
+
+    /**
+     * Like Workerman starts it, the timer of the connection checks is registered, the loop doesn't run
+     */
+    private function startedWorker(HttpServer $server): Worker
+    {
+        $worker = AddedWorker::of(static fn() => $server->listen(self::ADDRESS));
+        // initializes the timers
+        new SocketConnection();
+        self::assertNotNull($worker->onWorkerStart);
+        ($worker->onWorkerStart)($worker);
+
+        return $worker;
+    }
+
+    /**
+     * Like the timer of the worker, about once a second
+     */
+    private static function checkConnections(HttpServer $server, Worker $worker): void
+    {
+        (new ReflectionMethod($server, 'checkConnections'))->invoke($server, $worker);
     }
 
     /**
