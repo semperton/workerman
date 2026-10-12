@@ -24,16 +24,18 @@ use const SIGUSR2;
 /**
  * Development only, reloads the workers when a file changes
  * Files loaded before the workers start (settings, server classes) need a restart
+ *
+ * @api
  */
-final class FileMonitor
+final readonly class FileMonitor
 {
     /**
      * @param list<string> $paths directories, missing ones are skipped
      * @param float $interval seconds between the checks
      */
     public function __construct(
-        private readonly array $paths,
-        private readonly float $interval = 1.0,
+        private array $paths,
+        private float $interval = 1.0,
     ) {}
 
     public function listen(): Worker

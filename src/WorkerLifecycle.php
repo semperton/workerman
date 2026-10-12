@@ -8,6 +8,8 @@ use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Optionally implemented by the request handler, which lives as long as its worker
+ *
+ * @api
  */
 interface WorkerLifecycle
 {

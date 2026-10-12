@@ -19,6 +19,8 @@ use const SEEK_SET;
  * It is sent chunked (closed by end() on HTTP/1.0), the connection receives no further requests meanwhile
  *
  * Data pushed before the response is sent is buffered and readable like any stream
+ *
+ * @api
  */
 final class PushStream implements StreamInterface
 {

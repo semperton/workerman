@@ -32,6 +32,8 @@ use const SIGQUIT;
 /**
  * Serves a PSR-15 request handler with Workerman
  * Every worker process creates the handler once and handles all its requests with it
+ *
+ * @api
  */
 final class HttpServer
 {
