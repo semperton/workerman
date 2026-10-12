@@ -235,6 +235,9 @@ Workerman parses the requests and answers these with a `400`, they are rare behi
 
 Interim responses (`1xx`) and protocol upgrades are not supported, see [WebSockets](#websockets).
 
+Workerman parses a chunked request body again with every read until it is complete, so a body of many small chunks costs CPU time,
+within `maxBodySize`. Behind nginx this doesn't happen, it buffers chunked bodies and forwards them with a `Content-Length`.
+
 ## Versioning
 
 This package follows [Semantic Versioning](https://semver.org). The public API is `HttpServer`, `PushStream`, `WorkerLifecycle` and `FileMonitor`,
