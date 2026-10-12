@@ -159,10 +159,11 @@ function memory(): float
 {
     $ids = array_filter(explode("\n", compose('ps', '-q')));
     $process = proc_open(['docker', 'stats', '--no-stream', '--format', '{{.MemUsage}}', ...$ids], [1 => ['pipe', 'w']], $pipes);
-    $output = $process === false ? '' : (string) stream_get_contents($pipes[1]);
-    if ($process !== false) {
-        proc_close($process);
+    if ($process === false) {
+        return 0.0;
     }
+    $output = (string) stream_get_contents($pipes[1]);
+    proc_close($process);
 
     $total = 0.0;
     // e.g. "12.5MiB / 15.6GiB"

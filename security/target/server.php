@@ -7,7 +7,6 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Semperton\Workerman\HttpServer;
-use Workerman\Events\Select;
 use Workerman\Worker;
 
 /**
@@ -83,10 +82,6 @@ final class GardenEcho implements RequestHandlerInterface
 $port = (int) ($argv[2] ?? 8080);
 $handler = getenv('ECHO') === 'garden' ? new GardenEcho() : new ProbeEcho();
 
-// workerman uses the event extension if loaded, select is its fallback
-if (getenv('EVENT_LOOP') === 'select') {
-    Worker::$eventLoopClass = Select::class;
-}
 Worker::$pidFile = sys_get_temp_dir() . "/semperton-security-$port.pid";
 Worker::$logFile = sys_get_temp_dir() . "/semperton-security-$port.log";
 

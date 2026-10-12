@@ -10,7 +10,6 @@ services:
     environment:
       # probe: the endpoints of Http11Probe, garden: the JSON echo of HTTP Garden
       ECHO: ${ECHO:-probe}
-      EVENT_LOOP: ${EVENT_LOOP:-event}
     ports: ['127.0.0.1:8080:8080']
     ulimits:
       nofile: 65536
