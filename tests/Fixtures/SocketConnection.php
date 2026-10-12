@@ -62,9 +62,7 @@ final class SocketConnection
     public function write(string $data): void
     {
         fwrite($this->client, $data);
-        /** @var resource $socket */
-        $socket = $this->connection->getSocket();
-        $this->connection->baseRead($socket);
+        $this->connection->baseRead($this->connection->getSocket());
     }
 
     /**
@@ -98,7 +96,6 @@ final class SocketConnection
 
     private function writable(): bool
     {
-        /** @var resource $socket */
         $socket = $this->connection->getSocket();
         $read = $except = null;
         $write = [$socket];

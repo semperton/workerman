@@ -20,7 +20,7 @@ final class LifecycleHandler implements RequestHandlerInterface, WorkerLifecycle
     private array $calls = [];
 
     public function __construct(
-        private readonly ?Throwable $error = null,
+        private readonly ?Throwable $requestHandledError = null,
         private readonly ?Throwable $handleError = null,
     ) {}
 
@@ -34,8 +34,8 @@ final class LifecycleHandler implements RequestHandlerInterface, WorkerLifecycle
 
     public function requestHandled(ServerRequestInterface $request): void
     {
-        if ($this->error !== null) {
-            throw $this->error;
+        if ($this->requestHandledError !== null) {
+            throw $this->requestHandledError;
         }
         $this->calls[] = 'handled ' . $request->getUri()->getPath();
     }
