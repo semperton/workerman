@@ -265,9 +265,9 @@ final class HttpServerTest extends TestCase
     }
 
     /**
-     * @param ?callable(ServerRequestInterface): ResponseInterface $handle
+     * @param ?Closure(ServerRequestInterface): ResponseInterface $handle
      */
-    private function worker(?callable $handle = null, ?LoggerInterface $logger = null): Worker
+    private function worker(?Closure $handle = null, ?LoggerInterface $logger = null): Worker
     {
         $server = $this->server($handle, $logger);
 
@@ -275,16 +275,16 @@ final class HttpServerTest extends TestCase
     }
 
     /**
-     * @param ?callable(ServerRequestInterface): ResponseInterface $handle
+     * @param ?Closure(ServerRequestInterface): ResponseInterface $handle
      */
-    private function server(?callable $handle = null, ?LoggerInterface $logger = null): HttpServer
+    private function server(?Closure $handle = null, ?LoggerInterface $logger = null): HttpServer
     {
         // responds with the method and path of the request by default
         $handle ??= static fn(ServerRequestInterface $request): ResponseInterface => new Response(
             body: $request->getMethod() . ' ' . $request->getUri()->getPath(),
         );
 
-        $handler = new class ($handle(...)) implements RequestHandlerInterface {
+        $handler = new class ($handle) implements RequestHandlerInterface {
             /** @param Closure(ServerRequestInterface): ResponseInterface $handle */
             public function __construct(private readonly Closure $handle) {}
 
