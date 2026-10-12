@@ -46,6 +46,11 @@ final class HttpProtocol
      */
     public static function input(string $buffer, TcpConnection $connection): int
     {
+        // set by Http for chunked requests, only its decode() removes it, which is skipped for requests from workerman's cache,
+        // the next request on the connection would be decoded as chunked
+        /** @psalm-suppress PossiblyNullPropertyFetch the context is always set */
+        unset($connection->context->chunked);
+
         $headEnd = strpos($buffer, "\r\n\r\n");
 
         if ($headEnd === false) {

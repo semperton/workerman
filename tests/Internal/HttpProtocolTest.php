@@ -8,9 +8,14 @@ use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Semperton\Workerman\Internal\HttpProtocol;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
+use Workerman\Connection\TcpConnection;
+use Workerman\Protocols\Http\Request;
 
 use function str_repeat;
 use function strlen;
+use function strpos;
+use function substr;
+use function uniqid;
 
 final class HttpProtocolTest extends TestCase
 {
@@ -152,6 +157,35 @@ final class HttpProtocolTest extends TestCase
 
         self::assertSame(strlen($buffer), HttpProtocol::input($buffer, $socket->connection));
         self::assertSame('', $socket->read());
+    }
+
+    /**
+     * Workerman passes requests it has seen before from its cache, without decoding them again
+     */
+    public function testChunkedRequestFromTheCache(): void
+    {
+        // the cache is shared by all connections of the process
+        $path = '/' . uniqid('cached-');
+        $chunked = "POST $path HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n";
+        $bodies = [];
+        $onMessage = static function (TcpConnection $connection, Request $request) use (&$bodies): void {
+            $bodies[] = $request->rawBody();
+        };
+
+        $first = new SocketConnection();
+        $first->connection->onMessage = $onMessage;
+        $first->write($chunked);
+
+        // the same request in two reads, from the cache, then another request on the connection
+        $second = new SocketConnection();
+        $second->connection->onMessage = $onMessage;
+        $headEnd = (int) strpos($chunked, "\r\n\r\n") + 4;
+        $second->write(substr($chunked, 0, $headEnd));
+        $second->write(substr($chunked, $headEnd));
+        $second->write("POST $path HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\nhello");
+
+        self::assertSame(['abc', 'abc', 'hello'], $bodies);
+        self::assertSame('', $second->read());
     }
 
     public function testHeadStartedAt(): void
