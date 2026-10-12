@@ -6,30 +6,19 @@ namespace Semperton\Workerman\Tests;
 
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use Semperton\Workerman\Tests\Fixtures\Client;
+use Semperton\Workerman\Tests\Fixtures\ServerProcess;
 
-use function fclose;
 use function file_get_contents;
 use function microtime;
 use function posix_kill;
-use function proc_close;
 use function proc_get_status;
-use function proc_open;
-use function proc_terminate;
 use function str_repeat;
-use function stream_socket_client;
-use function stream_socket_get_name;
-use function stream_socket_server;
 use function strlen;
-use function strrpos;
-use function substr;
 use function sys_get_temp_dir;
 use function unlink;
 use function usleep;
 
-use const PHP_BINARY;
-use const SIGINT;
 use const SIGUSR2;
 
 /**
@@ -50,12 +39,12 @@ final class ServerTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         // short timeouts, the shared server is idle between the tests
-        [self::$process, self::$port] = self::start(idleTimeout: 2, headerTimeout: 1);
+        [self::$process, self::$port] = ServerProcess::start(idleTimeout: 2, headerTimeout: 1);
     }
 
     public static function tearDownAfterClass(): void
     {
-        self::stop(self::$process);
+        ServerProcess::stop(self::$process);
     }
 
     public function testKeepAlive(): void
@@ -212,7 +201,7 @@ final class ServerTest extends TestCase
 
     public function testMaxRequests(): void
     {
-        [$process, $port] = self::start(maxRequests: 2);
+        [$process, $port] = ServerProcess::start(maxRequests: 2);
 
         try {
             $idle = new Client($port);
@@ -226,7 +215,7 @@ final class ServerTest extends TestCase
             self::assertTrue($idle->closed(), 'closed, not timed out');
             self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
         } finally {
-            self::stop($process);
+            ServerProcess::stop($process);
         }
     }
 
@@ -242,7 +231,7 @@ final class ServerTest extends TestCase
 
     public function testPushGracefulReload(): void
     {
-        [$process, $port] = self::start();
+        [$process, $port] = ServerProcess::start();
 
         try {
             $events = new Client($port);
@@ -256,13 +245,13 @@ final class ServerTest extends TestCase
             self::assertTrue($events->closed());
             self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", (new Client($port))->request(self::GET)[0]);
         } finally {
-            self::stop($process);
+            ServerProcess::stop($process);
         }
     }
 
     public function testGracefulReload(): void
     {
-        [$process, $port] = self::start();
+        [$process, $port] = ServerProcess::start();
 
         try {
             $idle = new Client($port);
@@ -280,13 +269,13 @@ final class ServerTest extends TestCase
             self::assertTrue($idle->closed(), 'closed, so the worker can exit');
             self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
         } finally {
-            self::stop($process);
+            ServerProcess::stop($process);
         }
     }
 
     public function testWorkerStoppingAfterLastRequest(): void
     {
-        [$process, $port] = self::start();
+        [$process, $port] = ServerProcess::start();
         $stoppingFile = sys_get_temp_dir() . "/semperton-workerman-$port.stopping";
 
         try {
@@ -308,7 +297,7 @@ final class ServerTest extends TestCase
             self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
             self::assertSame($pid, @file_get_contents($stoppingFile), 'called when the worker exits');
         } finally {
-            self::stop($process);
+            ServerProcess::stop($process);
             @unlink($stoppingFile);
         }
     }
@@ -316,7 +305,7 @@ final class ServerTest extends TestCase
     public function testStopTimeout(): void
     {
         // without an idle timeout, only the stop timeout ends a client that doesn't read
-        [$process, $port] = self::start(idleTimeout: 0, stopTimeout: 1);
+        [$process, $port] = ServerProcess::start(idleTimeout: 0, stopTimeout: 1);
 
         try {
             [, $pid] = (new Client($port))->request(self::GET);
@@ -334,54 +323,7 @@ final class ServerTest extends TestCase
             self::assertLessThan(1024 * 1024 * 1024, strlen($busy->readAll()), 'the response was cut');
             self::assertTrue($busy->closed());
         } finally {
-            self::stop($process);
+            ServerProcess::stop($process);
         }
-    }
-
-    /**
-     * @return array{resource, int}
-     */
-    private static function start(int $maxRequests = 0, float $idleTimeout = 60, float $headerTimeout = 20, float $stopTimeout = 30): array
-    {
-        // a free port, assigned by the os
-        $socket = stream_socket_server('tcp://127.0.0.1:0');
-        if ($socket === false) {
-            throw new RuntimeException('Unable to find a free port');
-        }
-        $name = (string) stream_socket_get_name($socket, false);
-        fclose($socket);
-        $port = (int) substr($name, (int) strrpos($name, ':') + 1);
-
-        $output = ['file', sys_get_temp_dir() . "/semperton-workerman-$port.out", 'w'];
-        $process = proc_open(
-            [PHP_BINARY, __DIR__ . '/Fixtures/server.php', 'start', (string) $port, (string) $maxRequests, (string) $idleTimeout, (string) $headerTimeout, (string) $stopTimeout],
-            [['file', '/dev/null', 'r'], $output, $output],
-            $pipes,
-        );
-        if ($process === false) {
-            throw new RuntimeException('Unable to start the server');
-        }
-
-        // wait for the workers
-        $timeout = microtime(true) + 5.0;
-        while (($client = @stream_socket_client("tcp://127.0.0.1:$port")) === false) {
-            if (microtime(true) > $timeout) {
-                self::stop($process);
-                throw new RuntimeException("The server didn't start");
-            }
-            usleep(50_000);
-        }
-        fclose($client);
-
-        return [$process, $port];
-    }
-
-    /**
-     * @param resource $process
-     */
-    private static function stop($process): void
-    {
-        proc_terminate($process, SIGINT);
-        proc_close($process);
     }
 }
