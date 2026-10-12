@@ -8,12 +8,17 @@ use PHPUnit\Framework\TestCase;
 use Semperton\Workerman\Tests\Fixtures\Client;
 use Semperton\Workerman\Tests\Fixtures\ServerProcess;
 
+use function fclose;
 use function file_get_contents;
 use function microtime;
 use function posix_kill;
 use function proc_get_status;
 use function str_repeat;
+use function stream_socket_get_name;
+use function stream_socket_server;
 use function strlen;
+use function strrpos;
+use function substr;
 use function sys_get_temp_dir;
 use function unlink;
 use function usleep;
@@ -237,5 +242,64 @@ final class ServerTest extends TestCase
         } finally {
             ServerProcess::stop($process);
         }
+    }
+
+    public function testClientClosedWhenStopping(): void
+    {
+        [$database, $databasePort] = self::database();
+        [$process, $port] = ServerProcess::start(clientPort: $databasePort);
+        $stoppingFile = sys_get_temp_dir() . "/semperton-workerman-$port.stopping";
+
+        try {
+            [, $pid] = (new Client($port))->request(self::GET);
+
+            posix_kill(proc_get_status($process)['pid'], SIGUSR2);
+            usleep(200_000);
+
+            // workerman waits for the client, workerStopping() closes it once the last request is handled
+            // within the 5 s read timeout of the client, far below the stop timeout of 30 s
+            self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
+            self::assertSame($pid, @file_get_contents($stoppingFile));
+        } finally {
+            ServerProcess::stop($process);
+            fclose($database);
+            @unlink($stoppingFile);
+        }
+    }
+
+    public function testClientKeptWhenStopping(): void
+    {
+        [$database, $databasePort] = self::database();
+        [$process, $port] = ServerProcess::start(stopTimeout: 1, clientPort: $databasePort, keepClient: true);
+        $stoppingFile = sys_get_temp_dir() . "/semperton-workerman-$port.stopping";
+
+        try {
+            [, $pid] = (new Client($port))->request(self::GET);
+
+            posix_kill(proc_get_status($process)['pid'], SIGUSR2);
+            usleep(200_000);
+
+            // the client would keep the worker forever, it exits after the stop timeout
+            self::assertNotSame($pid, (new Client($port))->request(self::GET)[1]);
+            self::assertSame($pid, @file_get_contents($stoppingFile));
+        } finally {
+            ServerProcess::stop($process);
+            fclose($database);
+            @unlink($stoppingFile);
+        }
+    }
+
+    /**
+     * A server like a database, the os completes connections without accepting them
+     *
+     * @return array{resource, int}
+     */
+    private static function database(): array
+    {
+        $socket = stream_socket_server('tcp://127.0.0.1:0');
+        self::assertNotFalse($socket);
+        $name = (string) stream_socket_get_name($socket, false);
+
+        return [$socket, (int) substr($name, (int) strrpos($name, ':') + 1)];
     }
 }

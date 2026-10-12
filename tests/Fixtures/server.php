@@ -10,15 +10,17 @@ use Semperton\Workerman\HttpServer;
 use Semperton\Workerman\PushStream;
 use Semperton\Workerman\Tests\Fixtures\RepeatedStream;
 use Semperton\Workerman\WorkerLifecycle;
+use Workerman\Connection\AsyncTcpConnection;
 use Workerman\Timer;
 use Workerman\Worker;
 
 /**
- * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout> <stopTimeout>
+ * php server.php start <port> <maxRequests> <idleTimeout> <headerTimeout> <stopTimeout> <clientPort> <keepClient>
  * Responds with the pid of the worker, a 4 MB body for '/large', a 1 GB body for '/huge', the request body for '/echo',
  * an event every 100 ms for '/events' ('/events-error' throws once the client is gone),
  * or whether workerStopping() was called for '/stopping'
  * workerStopping() writes the pid of the worker to <tmp>/semperton-workerman-<port>.stopping
+ * With a client port, every worker keeps an async connection to it, like a database client, closed by workerStopping() unless kept
  */
 
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
@@ -29,18 +31,28 @@ $maxRequests = (int) ($argv[3] ?? 0);
 $idleTimeout = (float) ($argv[4] ?? 60);
 $headerTimeout = (float) ($argv[5] ?? 20);
 $stopTimeout = (float) ($argv[6] ?? 30);
+$clientPort = (int) ($argv[7] ?? 0);
+$keepClient = (bool) ($argv[8] ?? false);
 
 $files = sys_get_temp_dir() . '/semperton-workerman-' . $port;
 Worker::$pidFile = $files . '.pid';
 Worker::$statusFile = $files . '.status';
 Worker::$logFile = $files . '.log';
 
-$handler = new class ($files . '.stopping') implements RequestHandlerInterface, WorkerLifecycle {
+$handler = new class ($files . '.stopping', $keepClient) implements RequestHandlerInterface, WorkerLifecycle {
     private bool $stopping = false;
+    private ?AsyncTcpConnection $client = null;
 
     public function __construct(
         private readonly string $stoppingFile,
+        private readonly bool $keepClient,
     ) {}
+
+    public function connect(int $port): void
+    {
+        $this->client = new AsyncTcpConnection("tcp://127.0.0.1:$port");
+        $this->client->connect();
+    }
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -62,6 +74,11 @@ $handler = new class ($files . '.stopping') implements RequestHandlerInterface, 
     {
         $this->stopping = true;
         file_put_contents($this->stoppingFile, (string) getmypid());
+        if (!$this->keepClient) {
+            // workerman counts the connection until it is destructed
+            $this->client?->close();
+            $this->client = null;
+        }
     }
 
     private function events(bool $fail = false): PushStream
@@ -80,7 +97,12 @@ $handler = new class ($files . '.stopping') implements RequestHandlerInterface, 
     }
 };
 
-$server = new HttpServer(static fn() => $handler);
+$server = new HttpServer(static function () use ($handler, $clientPort): RequestHandlerInterface {
+    if ($clientPort > 0) {
+        $handler->connect($clientPort);
+    }
+    return $handler;
+});
 $server->listen(
     "http://127.0.0.1:$port",
     workers: 1,

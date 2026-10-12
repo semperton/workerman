@@ -387,6 +387,39 @@ final class ResponseSenderTest extends TestCase
         self::assertSame("5\r\nhello\r\n0\r\n\r\n", $body);
     }
 
+    public function testPushEndedBeforeSendListenerError(): void
+    {
+        $stream = new PushStream();
+        $stream->onClose(static fn() => throw new RuntimeException('Failed'));
+        $stream->push('hello');
+        $stream->end();
+
+        $logger = new ArrayLogger();
+        $socket = new SocketConnection();
+        // the head is sent, a thrown exception would make the server send an error response after it
+        (new ResponseSender($logger))->send($socket->connection, new Response(200, [], $stream), 'GET', '1.1', '');
+        [, $body] = $this->split($socket->read());
+
+        self::assertSame("5\r\nhello\r\n0\r\n\r\n", $body);
+        self::assertSame(['Failed'], $logger->messages);
+    }
+
+    public function testPushHeadListenerError(): void
+    {
+        $stream = new PushStream();
+        $stream->onClose(static fn() => throw new RuntimeException('Failed'));
+
+        $logger = new ArrayLogger();
+        $socket = new SocketConnection();
+        // like on a GET, where the error is logged once the stream is closed
+        (new ResponseSender($logger))->send($socket->connection, new Response(200, [], $stream), 'HEAD', '1.1', '');
+        [$head, $body] = $this->split($socket->read());
+
+        self::assertStringStartsWith('HTTP/1.1 200 OK', $head);
+        self::assertSame('', $body);
+        self::assertSame(['Failed'], $logger->messages);
+    }
+
     public function testPushHead(): void
     {
         $closed = false;

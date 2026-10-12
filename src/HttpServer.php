@@ -56,6 +56,7 @@ final class HttpServer
     private float $stopTimeout = 0.0;
     /** the time the worker started to stop, the remaining connections are closed after the stop timeout */
     private ?float $stoppingSince = null;
+    private bool $stopped = false;
 
     /**
      * @param Closure(): RequestHandlerInterface $handlerFactory called in every worker, after the fork,
@@ -139,7 +140,8 @@ final class HttpServer
             $this->stopTimeout = $stopTimeout;
             $this->timeouts = new ConnectionTimeouts($idleTimeout, $headerTimeout);
             Timer::add(1.0, fn() => $this->checkConnections($worker));
-            // the process exits once its connections are closed, requests may still arrive after onWorkerStop
+            // requests may still arrive after onWorkerStop, so it is called by checkConnections() once they are handled,
+            // or when the process exits, e.g. on a stop without -g
             register_shutdown_function($this->workerStopping(...));
             // create the handler at start, so errors show up early
             $this->handler();
@@ -207,8 +209,16 @@ final class HttpServer
         }
     }
 
+    /**
+     * Once the last connection is closed, or when the process exits
+     */
     private function workerStopping(): void
     {
+        if ($this->stopped) {
+            return;
+        }
+        $this->stopped = true;
+
         try {
             $this->lifecycle?->workerStopping();
         } catch (Throwable $exception) {
@@ -227,11 +237,20 @@ final class HttpServer
             }
         }
 
-        if ($this->stoppingSince !== null && microtime(true) - $this->stoppingSince >= $this->stopTimeout) {
-            foreach ($connections as $connection) {
-                $connection->destroy();
+        if ($this->stoppingSince !== null) {
+            if (microtime(true) - $this->stoppingSince >= $this->stopTimeout) {
+                foreach ($connections as $connection) {
+                    $connection->destroy();
+                }
+                // workerman waits for every connection of the process, e.g. an async client of the application
+                exit(0);
             }
-            return;
+
+            if ($connections === []) {
+                // no further requests arrive, the application can close its clients, then workerman exits
+                $this->workerStopping();
+                return;
+            }
         }
 
         $this->timeouts?->check($connections, $this->draining);

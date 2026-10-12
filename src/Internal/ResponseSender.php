@@ -105,7 +105,7 @@ final class ResponseSender
                 return;
             }
             // e.g. a HEAD request, nothing is pushed
-            $body->close();
+            $this->closeBody($body);
         }
 
         $writable = $connection->getSendBufferQueueSize() < $connection->maxSendBufferSize;
@@ -256,22 +256,29 @@ final class ResponseSender
         $buffered = $body->getContents();
 
         $connection->pauseRecv();
-        // the client is gone or doesn't read, e.g. earlier pipelined responses
-        if ($connection->send($buffered === '' ? $head : $head . $frame($buffered), true) === false) {
-            self::finish($connection, $body, false, $keepAlive, $connection->onClose);
-            return;
-        }
 
-        $onClose = $this->closeOnDisconnect($connection, $body);
-        $body->attach(
-            static fn(string $data): bool => $connection->send($frame($data), true) !== false,
-            static function (bool $complete) use ($connection, $body, $chunked, $keepAlive, $onClose): void {
-                if ($complete && $chunked) {
-                    $connection->send("0\r\n\r\n", true);
-                }
-                self::finish($connection, $body, $complete, $keepAlive, $onClose);
-            },
-        );
+        try {
+            // the client is gone or doesn't read, e.g. earlier pipelined responses
+            if ($connection->send($buffered === '' ? $head : $head . $frame($buffered), true) === false) {
+                self::finish($connection, $body, false, $keepAlive, $connection->onClose);
+                return;
+            }
+
+            $onClose = $this->closeOnDisconnect($connection, $body);
+            // a body that has already ended is finished right away
+            $body->attach(
+                static fn(string $data): bool => $connection->send($frame($data), true) !== false,
+                static function (bool $complete) use ($connection, $body, $chunked, $keepAlive, $onClose): void {
+                    if ($complete && $chunked) {
+                        $connection->send("0\r\n\r\n", true);
+                    }
+                    self::finish($connection, $body, $complete, $keepAlive, $onClose);
+                },
+            );
+        } catch (Throwable $exception) {
+            // a close listener, the head is already sent and the body finished
+            $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+        }
     }
 
     /**
@@ -283,18 +290,26 @@ final class ResponseSender
     {
         $onClose = $connection->onClose;
         $connection->onClose = function (TcpConnection $connection) use ($body, $onClose): void {
-            try {
-                $body->close();
-            } catch (Throwable $exception) {
-                // workerman would stop the worker, with all its connections
-                $this->logger->error($exception->getMessage(), ['exception' => $exception]);
-            }
+            // workerman would stop the worker, with all its connections
+            $this->closeBody($body);
             if ($onClose !== null) {
                 $onClose($connection);
             }
         };
 
         return $onClose;
+    }
+
+    /**
+     * Logs exceptions, e.g. of PushStream close listeners, where nobody could handle them
+     */
+    private function closeBody(StreamInterface $body): void
+    {
+        try {
+            $body->close();
+        } catch (Throwable $exception) {
+            $this->logger->error($exception->getMessage(), ['exception' => $exception]);
+        }
     }
 
     /**

@@ -28,10 +28,17 @@ use const SIGINT;
 final class ServerProcess
 {
     /**
+     * @param int $clientPort every worker keeps an async connection to it, closed when it stops unless kept
      * @return array{resource, int}
      */
-    public static function start(int $maxRequests = 0, float $idleTimeout = 60, float $headerTimeout = 20, float $stopTimeout = 30): array
-    {
+    public static function start(
+        int $maxRequests = 0,
+        float $idleTimeout = 60,
+        float $headerTimeout = 20,
+        float $stopTimeout = 30,
+        int $clientPort = 0,
+        bool $keepClient = false,
+    ): array {
         // a free port, assigned by the os
         $socket = stream_socket_server('tcp://127.0.0.1:0');
         if ($socket === false) {
@@ -43,7 +50,10 @@ final class ServerProcess
 
         $output = ['file', sys_get_temp_dir() . "/semperton-workerman-$port.out", 'w'];
         $process = proc_open(
-            [PHP_BINARY, __DIR__ . '/server.php', 'start', (string) $port, (string) $maxRequests, (string) $idleTimeout, (string) $headerTimeout, (string) $stopTimeout],
+            [
+                PHP_BINARY, __DIR__ . '/server.php', 'start', (string) $port, (string) $maxRequests,
+                (string) $idleTimeout, (string) $headerTimeout, (string) $stopTimeout, (string) $clientPort, $keepClient ? '1' : '',
+            ],
             [['file', '/dev/null', 'r'], $output, $output],
             $pipes,
         );

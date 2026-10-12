@@ -43,13 +43,13 @@ jobs:
             extensions: 'pcntl, posix'
     name: PHP ${{ matrix.php }} (${{ matrix.dependencies }}, ${{ matrix.extensions }}, ${{ matrix.os }})
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
           extensions: ${{ matrix.extensions }}
           coverage: none
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
         with:
           dependency-versions: ${{ matrix.dependencies }}
       - run: composer test
@@ -58,13 +58,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
           extensions: pcntl, posix
           coverage: none
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
       - run: composer validate --strict
       - run: composer audit --abandoned=report
       - run: composer check
@@ -75,19 +75,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
           extensions: pcntl, posix
           coverage: pcov
           tools: infection:0.35.6
-      - uses: ramsey/composer-install@v3
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
+      - uses: ramsey/composer-install@v4
         with:
           working-directory: security/fuzz
       # the corpus grows with every run
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: security/.cache/corpus
           key: security-corpus-${{ github.run_id }}
@@ -101,7 +101,7 @@ jobs:
       - name: Http11Probe and slowhttptest
         run: php security/run.php
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-results
           path: |

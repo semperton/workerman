@@ -126,7 +126,9 @@ final class Application implements RequestHandlerInterface, WorkerLifecycle
 `requestHandled()` is called once the response was handed to the connection, streamed and pushed bodies are still being sent.
 If it throws, the error is logged and the worker restarts gracefully, as its state is unknown.
 
-`workerStopping()` is called when the worker process exits, after its last connection is closed (reload, restart, `maxRequests` or shutdown).
+`workerStopping()` is called when the worker stops, after its last connection is closed (reload, restart, `maxRequests` or shutdown).
+Workerman keeps a stopping worker running while it has open async connections (e.g. `AsyncTcpConnection` or async Redis clients),
+close them there and release every reference, otherwise the worker only exits after `stopTimeout`.
 
 ## Server-Sent Events
 

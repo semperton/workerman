@@ -22,6 +22,8 @@ interface WorkerLifecycle
 
     /**
      * Called when the worker stops (reload, maxRequests, shutdown), e.g. to close connections
+     * Once its last request is handled, at the latest when the process exits
+     * Workerman keeps the worker running while it has async clients, they have to be closed and released here
      */
     public function workerStopping(): void;
 }
