@@ -21,6 +21,7 @@ use Semperton\Workerman\Tests\Fixtures\LifecycleHandler;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http\Request;
+use Workerman\Worker;
 
 use function pcntl_signal;
 use function pcntl_signal_dispatch;
@@ -30,10 +31,12 @@ use const SIGQUIT;
 
 final class HttpServerTest extends TestCase
 {
+    private const ADDRESS = 'http://127.0.0.1:8080';
+
     public function testRequest(): void
     {
         $socket = new SocketConnection();
-        $this->server()->handle($socket->connection, new Request("GET /users/1 HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        self::handle($this->worker(), $socket->connection, new Request("GET /users/1 HTTP/1.1\r\nHost: localhost\r\n\r\n"));
 
         $data = $socket->read();
         self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $data);
@@ -44,7 +47,7 @@ final class HttpServerTest extends TestCase
     public function testInvalidHost(): void
     {
         $socket = new SocketConnection();
-        $this->server()->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: a#\r\n\r\n"));
+        self::handle($this->worker(), $socket->connection, new Request("GET / HTTP/1.1\r\nHost: a#\r\n\r\n"));
 
         self::assertStringStartsWith("HTTP/1.1 400 Bad Request\r\n", $socket->read());
         self::assertTrue($socket->ended());
@@ -53,7 +56,7 @@ final class HttpServerTest extends TestCase
     public function testInvalidHeaderValue(): void
     {
         $socket = new SocketConnection();
-        $this->server()->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\nX-Id: a\x00b\r\n\r\n"));
+        self::handle($this->worker(), $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\nX-Id: a\x00b\r\n\r\n"));
 
         self::assertStringStartsWith("HTTP/1.1 400 Bad Request\r\n", $socket->read());
     }
@@ -69,7 +72,7 @@ final class HttpServerTest extends TestCase
         };
 
         $socket = new SocketConnection();
-        $this->server()->handle($socket->connection, $request);
+        self::handle($this->worker(), $socket->connection, $request);
 
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
     }
@@ -77,8 +80,8 @@ final class HttpServerTest extends TestCase
     public function testInterimResponse(): void
     {
         $socket = new SocketConnection();
-        $server = $this->server(static fn(): ResponseInterface => new Response(101));
-        $server->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        $worker = $this->worker(static fn(): ResponseInterface => new Response(101));
+        self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
 
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
     }
@@ -95,13 +98,13 @@ final class HttpServerTest extends TestCase
      */
     public static function invalidOptions(): iterable
     {
-        yield 'workers' => [static fn(HttpServer $server) => $server->listen(workers: 0)];
-        yield 'max body size' => [static fn(HttpServer $server) => $server->listen(maxBodySize: -1)];
-        yield 'max requests' => [static fn(HttpServer $server) => $server->listen(maxRequests: -1)];
-        yield 'idle timeout' => [static fn(HttpServer $server) => $server->listen(idleTimeout: -1)];
-        yield 'header timeout' => [static fn(HttpServer $server) => $server->listen(headerTimeout: -1)];
-        yield 'stop timeout' => [static fn(HttpServer $server) => $server->listen(stopTimeout: 0)];
-        yield 'negative stop timeout' => [static fn(HttpServer $server) => $server->listen(stopTimeout: -1)];
+        yield 'workers' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, workers: 0)];
+        yield 'max body size' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, maxBodySize: -1)];
+        yield 'max requests' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, maxRequests: -1)];
+        yield 'idle timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, idleTimeout: -1)];
+        yield 'header timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, headerTimeout: -1)];
+        yield 'stop timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, stopTimeout: 0)];
+        yield 'negative stop timeout' => [static fn(HttpServer $server) => $server->listen(self::ADDRESS, stopTimeout: -1)];
     }
 
     /**
@@ -118,15 +121,15 @@ final class HttpServerTest extends TestCase
     public function testLifecycleAfterError(): void
     {
         $handler = new LifecycleHandler(handleError: new RuntimeException('Failed'));
-        $server = new HttpServer(static fn() => $handler);
+        $worker = (new HttpServer(static fn() => $handler))->listen(self::ADDRESS);
 
         $socket = new SocketConnection();
-        $server->handle($socket->connection, new Request("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        self::handle($worker, $socket->connection, new Request("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n"));
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
 
         // a client error, the handler wasn't called
         $socket = new SocketConnection();
-        $server->handle($socket->connection, new Request("GET /b HTTP/1.1\r\nHost: a#\r\n\r\n"));
+        self::handle($worker, $socket->connection, new Request("GET /b HTTP/1.1\r\nHost: a#\r\n\r\n"));
         self::assertStringStartsWith("HTTP/1.1 400 Bad Request\r\n", $socket->read());
 
         // the state may have changed before the error
@@ -138,8 +141,8 @@ final class HttpServerTest extends TestCase
         $logger = new ArrayLogger();
 
         $socket = new SocketConnection();
-        $server = $this->server(static fn() => throw new RuntimeException('Failed'), $logger);
-        $server->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        $worker = $this->worker(static fn() => throw new RuntimeException('Failed'), $logger);
+        self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
 
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
         self::assertSame(['Failed'], $logger->messages);
@@ -153,7 +156,7 @@ final class HttpServerTest extends TestCase
         });
 
         $server = $this->server();
-        $worker = $server->listen(maxBodySize: 1024, maxRequests: 2);
+        $worker = $server->listen(self::ADDRESS, maxBodySize: 1024, maxRequests: 2);
         $defaultMaxPackageSize = TcpConnection::$defaultMaxPackageSize;
 
         try {
@@ -167,10 +170,10 @@ final class HttpServerTest extends TestCase
             self::assertSame(1024 + 16 * 1024, $socket->connection->maxPackageSize);
             self::assertSame($defaultMaxPackageSize, TcpConnection::$defaultMaxPackageSize);
 
-            $server->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+            self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
             self::assertStringNotContainsString('Connection: close', $socket->read());
 
-            $server->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+            self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
             self::assertStringContainsString("\r\nConnection: close", $socket->read());
             self::assertTrue($socket->ended());
 
@@ -185,11 +188,11 @@ final class HttpServerTest extends TestCase
     {
         $handler = new LifecycleHandler();
         $server = new HttpServer(static fn() => $handler);
-        $worker = $server->listen();
+        $worker = $server->listen(self::ADDRESS);
 
         $socket = new SocketConnection();
-        $server->handle($socket->connection, new Request("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n"));
-        $server->handle($socket->connection, new Request("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        self::handle($worker, $socket->connection, new Request("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+        self::handle($worker, $socket->connection, new Request("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n"));
 
         // workerStopping() is called when the process exits, see ServerTest
         self::assertNotNull($worker->onWorkerStop);
@@ -207,10 +210,10 @@ final class HttpServerTest extends TestCase
         try {
             $logger = new ArrayLogger();
             $handler = new LifecycleHandler(new RuntimeException('Reset failed'));
-            $server = new HttpServer(static fn() => $handler, logger: $logger);
+            $worker = (new HttpServer(static fn() => $handler, logger: $logger))->listen(self::ADDRESS);
 
             $socket = new SocketConnection();
-            $server->handle($socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+            self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
 
             // the response was sent before, the worker restarts
             self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $socket->read());
@@ -220,6 +223,23 @@ final class HttpServerTest extends TestCase
         } finally {
             pcntl_signal(SIGQUIT, SIG_DFL);
         }
+    }
+
+    /**
+     * Like Workerman, for every request
+     */
+    private static function handle(Worker $worker, TcpConnection $connection, Request $request): void
+    {
+        self::assertNotNull($worker->onMessage);
+        ($worker->onMessage)($connection, $request);
+    }
+
+    /**
+     * @param ?callable(ServerRequestInterface): ResponseInterface $handle
+     */
+    private function worker(?callable $handle = null, ?LoggerInterface $logger = null): Worker
+    {
+        return $this->server($handle, $logger)->listen(self::ADDRESS);
     }
 
     /**

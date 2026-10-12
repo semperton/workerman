@@ -80,7 +80,7 @@ final class HttpServer
      * @param float $stopTimeout seconds a stopping worker waits for its connections to finish, then closes them
      */
     public function listen(
-        string $address = 'http://0.0.0.0:8080',
+        string $address,
         int $workers = 4,
         int $maxBodySize = 1024 * 1024,
         int $maxRequests = 0,
@@ -141,10 +141,7 @@ final class HttpServer
         return $worker;
     }
 
-    /**
-     * @internal called by the worker for every request
-     */
-    public function handle(TcpConnection $connection, Request $request): void
+    private function handle(TcpConnection $connection, Request $request): void
     {
         if ($this->maxRequests > 0 && ++$this->requests === $this->maxRequests) {
             $this->drain();
