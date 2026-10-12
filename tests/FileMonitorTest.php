@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Tests;
 
+use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use Semperton\Workerman\FileMonitor;
@@ -64,6 +66,15 @@ final class FileMonitorTest extends TestCase
         // reloading would restart the monitor, it would miss the change
         self::assertFalse($worker->reloadable);
         self::assertNotNull($worker->onWorkerStart);
+    }
+
+    #[TestWith([0.0])]
+    #[TestWith([-1.0])]
+    public function testInvalidInterval(float $interval): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new FileMonitor([$this->dir], $interval);
     }
 
     private function lastModified(FileMonitor $monitor): int

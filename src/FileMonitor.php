@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Semperton\Workerman;
 
 use FilesystemIterator;
+use InvalidArgumentException;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
@@ -36,7 +37,12 @@ final readonly class FileMonitor
     public function __construct(
         private array $paths,
         private float $interval = 1.0,
-    ) {}
+    ) {
+        // 0 would check the files without pause
+        if ($interval <= 0) {
+            throw new InvalidArgumentException("Invalid interval < $interval >, expected seconds > 0");
+        }
+    }
 
     /**
      * Adds the monitor worker, Worker::runAll() starts it
