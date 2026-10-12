@@ -90,7 +90,7 @@ Other bodies (e.g. JSON) are left to the application.
   or both `Content-Length` and `Transfer-Encoding` (request smuggling). Too large heads get a `431`, too large bodies a `413`.
 - Error responses close the connection gracefully, so clients receive them even if they are still sending.
 
-Responses support `HEAD`, `204` / `304` without a body, and chunked encoding for bodies of unknown size.
+Responses support `HEAD`, `204` / `205` / `304` without a body, and chunked encoding for bodies of unknown size.
 Bodies larger than 2 MB are streamed and wait for the client to read them (backpressure).
 A body that is shorter than its size closes the connection, so the client notices, a longer one is cut.
 
