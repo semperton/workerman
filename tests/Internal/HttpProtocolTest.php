@@ -21,10 +21,11 @@ final class HttpProtocolTest extends TestCase
 {
     private const CONTINUE = "HTTP/1.1 100 Continue\r\n\r\n";
 
-    public function testContinue(): void
+    #[TestWith(["POST / HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 5\r\n\r\n"], 'expect first')]
+    #[TestWith(["POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\nExpect: 100-continue\r\n\r\n"], 'expect last')] // like curl
+    public function testContinue(string $head): void
     {
         $socket = new SocketConnection();
-        $head = "POST / HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 5\r\n\r\n";
 
         self::assertSame(strlen($head) + 5, HttpProtocol::input($head, $socket->connection));
         self::assertSame(self::CONTINUE, $socket->read());

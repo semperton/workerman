@@ -36,7 +36,14 @@ final class RequestConverterTest extends TestCase
         self::assertSame('application/json', $request->getHeaderLine('Accept'));
         self::assertSame(['page' => '2', 'tags' => ['a']], $request->getQueryParams());
         self::assertSame(['session' => 'a b', 'theme' => 'dark'], $request->getCookieParams());
+        self::assertSame('GET', $serverParams['REQUEST_METHOD']);
+        self::assertSame('page=2&tags[]=a', $serverParams['QUERY_STRING']);
+        self::assertSame('HTTP/1.1', $serverParams['SERVER_PROTOCOL']);
         self::assertSame('127.0.0.1', $serverParams['REMOTE_ADDR']);
+        self::assertSame(50000, $serverParams['REMOTE_PORT']);
+        self::assertIsInt($serverParams['REQUEST_TIME']);
+        self::assertIsFloat($serverParams['REQUEST_TIME_FLOAT']);
+        self::assertSame((int) $serverParams['REQUEST_TIME_FLOAT'], $serverParams['REQUEST_TIME']);
         self::assertSame('/users/1?page=2&tags[]=a', $serverParams['REQUEST_URI']);
         self::assertSame('example.com', $serverParams['SERVER_NAME']);
         self::assertSame('example.com:8080', $serverParams['HTTP_HOST']);
@@ -110,6 +117,10 @@ final class RequestConverterTest extends TestCase
             . "Content-Disposition: form-data; name=\"avatar\"; filename=\"\"\r\n"
             . "Content-Type: application/octet-stream\r\n\r\n"
             . "\r\n"
+            . "--boundary\r\n"
+            . "Content-Disposition: form-data; name=\"empty\"; filename=\"empty.txt\"\r\n"
+            . "Content-Type: text/plain\r\n\r\n"
+            . "\r\n"
             . "--boundary--\r\n";
 
         $request = $this->convert(
@@ -132,6 +143,13 @@ final class RequestConverterTest extends TestCase
 
         // an empty file input, like in PHP
         self::assertSame(UPLOAD_ERR_NO_FILE, $this->uploadedFile($files['avatar'])->getError());
+
+        // an empty file is a file
+        $empty = $this->uploadedFile($files['empty']);
+        self::assertSame(UPLOAD_ERR_OK, $empty->getError());
+        self::assertSame('empty.txt', $empty->getClientFilename());
+        self::assertSame(0, $empty->getSize());
+        self::assertSame('', (string) $empty->getStream());
     }
 
     public function testMissingHost(): void
