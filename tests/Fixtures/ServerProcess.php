@@ -7,6 +7,7 @@ namespace Semperton\Workerman\Tests\Fixtures;
 use RuntimeException;
 
 use function fclose;
+use function get_resource_id;
 use function microtime;
 use function proc_close;
 use function proc_open;
@@ -17,6 +18,7 @@ use function stream_socket_server;
 use function strrpos;
 use function substr;
 use function sys_get_temp_dir;
+use function unlink;
 use function usleep;
 
 use const PHP_BINARY;
@@ -27,6 +29,9 @@ use const SIGINT;
  */
 final class ServerProcess
 {
+    /** @var array<int, int> the ports of the running processes, by their resource id */
+    private static array $ports = [];
+
     /**
      * @param int $clientPort every worker keeps an async connection to it, closed when it stops unless kept
      * @return array{resource, int}
@@ -60,6 +65,7 @@ final class ServerProcess
         if ($process === false) {
             throw new RuntimeException('Unable to start the server');
         }
+        self::$ports[get_resource_id($process)] = $port;
 
         // wait for the workers
         $timeout = microtime(true) + 5.0;
@@ -76,11 +82,22 @@ final class ServerProcess
     }
 
     /**
+     * Stops the server and removes its files
+     *
      * @param resource $process
      */
     public static function stop($process): void
     {
+        $id = get_resource_id($process);
         proc_terminate($process, SIGINT);
         proc_close($process);
+
+        $port = self::$ports[$id] ?? null;
+        unset(self::$ports[$id]);
+        if ($port !== null) {
+            foreach (['out', 'log', 'pid', 'status', 'stopping'] as $extension) {
+                @unlink(sys_get_temp_dir() . "/semperton-workerman-$port.$extension");
+            }
+        }
     }
 }

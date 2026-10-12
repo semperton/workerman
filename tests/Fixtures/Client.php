@@ -10,6 +10,7 @@ use function fclose;
 use function feof;
 use function fread;
 use function fwrite;
+use function microtime;
 use function preg_match;
 use function str_contains;
 use function stream_set_timeout;
@@ -101,14 +102,19 @@ final class Client
 
     /**
      * Reads until the server closes the connection, or the read times out
+     * A server that keeps sending fails the test after 10 s, instead of keeping it running
      */
     public function readAll(): string
     {
         $data = $this->buffer;
         $this->buffer = '';
+        $deadline = microtime(true) + 10.0;
 
         while (($chunk = (string) fread($this->socket, 65536)) !== '') {
             $data .= $chunk;
+            if (microtime(true) > $deadline) {
+                throw new RuntimeException('The connection was not closed within 10 s');
+            }
         }
 
         return $data;
