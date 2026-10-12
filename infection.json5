@@ -5,7 +5,7 @@
         "directories": ["src"]
     },
     // the score of 2026-10, raise it as tests improve
-    "minMsi": 82,
+    "minMsi": 90,
     "logs": {
         "text": "infection.log"
     }
