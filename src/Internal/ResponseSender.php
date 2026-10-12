@@ -84,6 +84,9 @@ final class ResponseSender
         if ($status === 304) {
             // the length a 200 would have, there is no body
             $contentLength = self::length($response->getHeaderLine('Content-Length'));
+        } elseif ($status === 205) {
+            // no content is allowed, rfc 9110 15.3.6
+            $contentLength = 0;
         } elseif ($status !== 204) {
             $size = $body->getSize();
             // the length of a push is unknown, whatever the header says
@@ -131,7 +134,7 @@ final class ResponseSender
 
         $head .= "\r\n";
 
-        $withBody = $method !== 'HEAD' && $status !== 204 && $status !== 304;
+        $withBody = $method !== 'HEAD' && $status !== 204 && $status !== 205 && $status !== 304;
 
         if ($body instanceof PushStream) {
             if ($withBody) {

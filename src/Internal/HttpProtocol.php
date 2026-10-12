@@ -25,6 +25,7 @@ use function substr;
 final class HttpProtocol
 {
     private const CONTINUE = "HTTP/1.1 100 Continue\r\n\r\n";
+    // the phrase of the 413 workerman sends for too large bodies of known size, rfc 9110 calls it "Content Too Large"
     private const TOO_LARGE = "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 
     /**

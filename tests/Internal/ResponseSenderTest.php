@@ -60,6 +60,18 @@ final class ResponseSenderTest extends TestCase
         self::assertSame('', $body);
     }
 
+    public function testResetContent(): void
+    {
+        $socket = new SocketConnection();
+        $this->sender()->send($socket->connection, new Response(205, [], 'hello'), 'POST', '1.1', '');
+        [$head, $body] = $this->split($socket->read());
+
+        self::assertStringStartsWith("HTTP/1.1 205 Reset Content\r\n", $head);
+        self::assertStringContainsString("\r\nContent-Length: 0", $head);
+        self::assertSame('', $body);
+        self::assertSame(TcpConnection::STATUS_ESTABLISHED, $socket->connection->getStatus());
+    }
+
     public function testNotModified(): void
     {
         $socket = new SocketConnection();
