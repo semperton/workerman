@@ -7,6 +7,7 @@ namespace Semperton\Workerman\Tests;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use Semperton\Workerman\FileMonitor;
+use Semperton\Workerman\Tests\Fixtures\AddedWorker;
 
 use function mkdir;
 use function rmdir;
@@ -57,7 +58,8 @@ final class FileMonitorTest extends TestCase
 
     public function testWorker(): void
     {
-        $worker = (new FileMonitor([$this->dir]))->listen();
+        $monitor = new FileMonitor([$this->dir]);
+        $worker = AddedWorker::of(static fn() => $monitor->listen());
 
         // reloading would restart the monitor, it would miss the change
         self::assertFalse($worker->reloadable);

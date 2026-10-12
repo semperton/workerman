@@ -38,14 +38,15 @@ final readonly class FileMonitor
         private float $interval = 1.0,
     ) {}
 
-    public function listen(): Worker
+    /**
+     * Adds the monitor worker, Worker::runAll() starts it
+     */
+    public function listen(): void
     {
         $worker = new Worker();
         $worker->name = 'monitor';
         $worker->reloadable = false;
         $worker->onWorkerStart = $this->start(...);
-
-        return $worker;
     }
 
     private function start(): void

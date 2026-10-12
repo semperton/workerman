@@ -16,6 +16,7 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Semperton\Workerman\HttpServer;
+use Semperton\Workerman\Tests\Fixtures\AddedWorker;
 use Semperton\Workerman\Tests\Fixtures\ArrayLogger;
 use Semperton\Workerman\Tests\Fixtures\LifecycleHandler;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
@@ -93,6 +94,17 @@ final class HttpServerTest extends TestCase
         $this->server()->listen('https://0.0.0.0:8443');
     }
 
+    public function testWorker(): void
+    {
+        $server = $this->server();
+        $worker = AddedWorker::of(static fn() => $server->listen('http://[::1]:8080', workers: 2, user: 'www-data', group: 'www'));
+
+        self::assertSame('tcp://[::1]:8080', $worker->getSocketName());
+        self::assertSame(2, $worker->count);
+        self::assertSame('www-data', $worker->user);
+        self::assertSame('www', $worker->group);
+    }
+
     /**
      * @return iterable<string, array{Closure(HttpServer): mixed}>
      */
@@ -121,7 +133,8 @@ final class HttpServerTest extends TestCase
     public function testLifecycleAfterError(): void
     {
         $handler = new LifecycleHandler(handleError: new RuntimeException('Failed'));
-        $worker = (new HttpServer(static fn() => $handler))->listen(self::ADDRESS);
+        $server = new HttpServer(static fn() => $handler);
+        $worker = AddedWorker::of(static fn() => $server->listen(self::ADDRESS));
 
         $socket = new SocketConnection();
         self::handle($worker, $socket->connection, new Request("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n"));
@@ -156,7 +169,7 @@ final class HttpServerTest extends TestCase
         });
 
         $server = $this->server();
-        $worker = $server->listen(self::ADDRESS, maxBodySize: 1024, maxRequests: 2);
+        $worker = AddedWorker::of(static fn() => $server->listen(self::ADDRESS, maxBodySize: 1024, maxRequests: 2));
         $defaultMaxPackageSize = TcpConnection::$defaultMaxPackageSize;
 
         try {
@@ -189,7 +202,7 @@ final class HttpServerTest extends TestCase
     {
         $handler = new LifecycleHandler();
         $server = new HttpServer(static fn() => $handler);
-        $worker = $server->listen(self::ADDRESS);
+        $worker = AddedWorker::of(static fn() => $server->listen(self::ADDRESS));
 
         $socket = new SocketConnection();
         self::handle($worker, $socket->connection, new Request("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n"));
@@ -211,7 +224,8 @@ final class HttpServerTest extends TestCase
         try {
             $logger = new ArrayLogger();
             $handler = new LifecycleHandler(new RuntimeException('Reset failed'));
-            $worker = (new HttpServer(static fn() => $handler, logger: $logger))->listen(self::ADDRESS);
+            $server = new HttpServer(static fn() => $handler, logger: $logger);
+            $worker = AddedWorker::of(static fn() => $server->listen(self::ADDRESS));
 
             $socket = new SocketConnection();
             self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
@@ -240,7 +254,9 @@ final class HttpServerTest extends TestCase
      */
     private function worker(?callable $handle = null, ?LoggerInterface $logger = null): Worker
     {
-        return $this->server($handle, $logger)->listen(self::ADDRESS);
+        $server = $this->server($handle, $logger);
+
+        return AddedWorker::of(static fn() => $server->listen(self::ADDRESS));
     }
 
     /**

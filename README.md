@@ -39,7 +39,8 @@ Run the script with `php server.php start`, see the [Workerman docs](https://man
 The handler is created in the workers, so database connections and other resources are never shared between processes.
 It is created when the worker starts, so errors show up early: if the factory throws, the worker exits and Workerman starts it again, until the error is fixed.
 
-`listen()` returns the Workerman `Worker`, e.g. to set its `user` and `group`, and throws an `InvalidArgumentException` for invalid options.
+`listen()` adds the workers to Workerman, `Worker::runAll()` starts them together with other workers, e.g. [WebSockets](#websockets).
+It can be called more than once, e.g. for another address with other options, and throws an `InvalidArgumentException` for invalid options.
 
 ## Options
 
@@ -52,6 +53,8 @@ $server->listen(
     idleTimeout: 60,                // seconds a connection may receive and send nothing, 0 = never
     headerTimeout: 20,              // seconds a client may take to send a request head, 0 = never
     stopTimeout: 30,                // seconds a stopping worker waits for its connections, then closes them
+    user: 'www-data',               // the user of the worker processes if started as root, '' = the current user
+    group: 'www-data',              // their group, '' = the group of the user
 );
 ```
 The whole request is kept in memory while it arrives, so `maxBodySize` limits the memory of every connection.

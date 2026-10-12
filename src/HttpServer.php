@@ -69,15 +69,18 @@ final class HttpServer
     }
 
     /**
-     * Can be called more than once, every worker process runs one of the returned workers with its own options
-     * The returned worker may be configured further, e.g. its user and group
+     * Adds the workers, Worker::runAll() starts them
+     * Can be called more than once, e.g. for another address with other options
      *
+     * @param string $address http://host:port
      * @param int $workers worker processes, e.g. one per CPU core
      * @param int $maxBodySize requests with a larger body get a 413, the body is kept in memory
      * @param int $maxRequests a worker restarts after this many requests, limits slow memory leaks, 0 = never
      * @param float $idleTimeout seconds a connection may receive and send nothing, e.g. between keep-alive requests, 0 = never
      * @param float $headerTimeout seconds a client may take to send a request head, slower ones get a 408, 0 = never
      * @param float $stopTimeout seconds a stopping worker waits for its connections to finish, then closes them
+     * @param string $user the worker processes run as this user, if the server is started as root, '' = the current user
+     * @param string $group the group of the worker processes, '' = the group of the user
      */
     public function listen(
         string $address,
@@ -87,7 +90,9 @@ final class HttpServer
         float $idleTimeout = 60.0,
         float $headerTimeout = 20.0,
         float $stopTimeout = 30.0,
-    ): Worker {
+        string $user = '',
+        string $group = '',
+    ): void {
         if (!str_starts_with($address, 'http://')) {
             throw new InvalidArgumentException("Invalid address < $address >, expected http://host:port");
         }
@@ -114,6 +119,8 @@ final class HttpServer
         $worker->protocol = HttpProtocol::class;
         $worker->name = 'http';
         $worker->count = $workers;
+        $worker->user = $user;
+        $worker->group = $group;
         // workers share one socket, so stopping workers doesn't drop queued connections
         $worker->reusePort = false;
         // workerman limits the whole request, the head is limited separately
@@ -140,8 +147,6 @@ final class HttpServer
             $this->stoppingSince ??= microtime(true);
         };
         $worker->onMessage = $this->handle(...);
-
-        return $worker;
     }
 
     private function handle(TcpConnection $connection, Request $request): void
