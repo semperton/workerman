@@ -43,6 +43,7 @@
         "test": "phpunit",
         "check": [
             "psalm --no-cache",
+            "psalm --no-cache --taint-analysis",
             "php-cs-fixer check"
         ],
         "fix": "php-cs-fixer fix",

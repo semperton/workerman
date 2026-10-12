@@ -9,6 +9,9 @@
     findUnusedCode="false"
     ensureOverrideAttribute="false"
 >
+    <stubs>
+        <file name="psalm/taint-sources.phpstub" />
+    </stubs>
     <projectFiles>
         <directory name="src" />
         <directory name="tests" />

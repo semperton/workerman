@@ -1,0 +1,91 @@
+<?php
+
+// request data is untrusted, Psalm knows neither PSR-7 nor Workerman by itself, used by psalm --taint-analysis
+
+namespace Workerman\Protocols\Http {
+    class Request
+    {
+        /** @psalm-taint-source input */
+        public function get(?string $name = null, mixed $default = null): mixed {}
+
+        /** @psalm-taint-source input */
+        public function post(?string $name = null, mixed $default = null): mixed {}
+
+        /** @psalm-taint-source input */
+        public function header(?string $name = null, mixed $default = null): mixed {}
+
+        /** @psalm-taint-source input */
+        public function cookie(?string $name = null, mixed $default = null): mixed {}
+
+        /** @psalm-taint-source input */
+        public function file(?string $name = null): mixed {}
+
+        /** @psalm-taint-source input */
+        public function uri(): string {}
+
+        /** @psalm-taint-source input */
+        public function path(): string {}
+
+        /** @psalm-taint-source input */
+        public function queryString(): string {}
+
+        /** @psalm-taint-source input */
+        public function rawHead(): string {}
+
+        /** @psalm-taint-source input */
+        public function rawBody(): string {}
+    }
+}
+
+namespace Psr\Http\Message {
+    interface ServerRequestInterface extends RequestInterface
+    {
+        /** @psalm-taint-source input */
+        public function getHeaders(): array;
+
+        /** @psalm-taint-source input */
+        public function getHeader(string $name): array;
+
+        /** @psalm-taint-source input */
+        public function getHeaderLine(string $name): string;
+
+        /** @psalm-taint-source input */
+        public function getRequestTarget(): string;
+
+        /** @psalm-taint-source input */
+        public function getServerParams(): array;
+
+        /** @psalm-taint-source input */
+        public function getCookieParams(): array;
+
+        /** @psalm-taint-source input */
+        public function getQueryParams(): array;
+
+        /**
+         * @psalm-taint-source input
+         * @return null|array|object
+         */
+        public function getParsedBody();
+    }
+
+    interface UriInterface
+    {
+        /** @psalm-taint-source input */
+        public function getUserInfo(): string;
+
+        /** @psalm-taint-source input */
+        public function getHost(): string;
+
+        /** @psalm-taint-source input */
+        public function getPath(): string;
+
+        /** @psalm-taint-source input */
+        public function getQuery(): string;
+
+        /** @psalm-taint-source input */
+        public function getFragment(): string;
+
+        /** @psalm-taint-source input */
+        public function __toString(): string;
+    }
+}
