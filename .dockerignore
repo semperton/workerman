@@ -1,7 +1,9 @@
-# the benchmark images only need src/, composer.json and benchmark/
+# the benchmark and security images only need src/, composer.json, benchmark/ and the security target
 *
 !composer.json
 !src
 !benchmark/app
 !benchmark/php.ini
 !benchmark/servers
+!security/target/server.php
+!security/target/composer.json

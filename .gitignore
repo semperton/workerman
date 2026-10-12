@@ -3,3 +3,9 @@
 /.php-cs-fixer.cache
 /.phpunit.cache
 /.phpbench/
+/security/results/
+/security/.cache/
+/security/fuzz/vendor/
+/security/fuzz/composer.lock
+/crash-*.txt
+/infection.log

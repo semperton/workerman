@@ -9,5 +9,7 @@
 /phpunit.xml.dist	export-ignore
 /.github		export-ignore
 /benchmark		export-ignore
+/security		export-ignore
+/infection.json5		export-ignore
 /phpbench.json		export-ignore
 /.dockerignore		export-ignore

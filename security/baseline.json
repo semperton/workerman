@@ -1,0 +1,28 @@
+{
+    "http11probe": {
+        "direct": {
+            "COMP-OPTIONS-STAR": "Workerman rejects the asterisk form with a 400, see Limitations in the README",
+            "MAL-LONG-METHOD": "a request line over 16 KB gets a 431 and the connection is closed, instead of a 400",
+            "MAL-CL-OVERFLOW": "a Content-Length too large for any body gets a 413 instead of a 400",
+            "MAL-CHUNK-EXT-64K": "a chunk extension of 64 KB exceeds the body limit of the target, so it gets a 413"
+        },
+        "proxy": {
+            "COMP-OPTIONS-STAR": "forwarded by nginx, Workerman rejects the asterisk form with a 400",
+            "MAL-LONG-METHOD": "nginx answers a 414",
+            "RFC9112-5-INVALID-HEADER-NAME": "nginx drops invalid header lines (ignore_invalid_headers), the target never sees them",
+            "RFC9112-5-HEADER-NO-COLON": "nginx drops invalid header lines (ignore_invalid_headers), the target never sees them",
+            "MAL-NON-ASCII-HEADER-NAME": "nginx drops invalid header lines (ignore_invalid_headers), the target never sees them",
+            "SMUG-TE-DOUBLE-CHUNKED": "nginx answers transfer codings other than chunked with a 501",
+            "SMUG-TE-NOT-FINAL-CHUNKED": "nginx answers transfer codings other than chunked with a 501",
+            "SMUG-TE-EMPTY-VALUE": "nginx answers transfer codings other than chunked with a 501",
+            "SMUG-TE-LEADING-COMMA": "nginx answers transfer codings other than chunked with a 501",
+            "SMUG-TE-TRAILING-COMMA": "nginx answers transfer codings other than chunked with a 501",
+            "SMUG-TE-VTAB": "nginx answers transfer codings other than chunked with a 501",
+            "SMUG-TE-FORMFEED": "nginx answers transfer codings other than chunked with a 501",
+            "SMUG-CHUNK-BARE-SEMICOLON": "nginx accepts the chunk line, buffers the body and forwards it with a Content-Length, nothing is left to desync",
+            "SMUG-CHUNK-EXT-INVALID-TOKEN": "nginx accepts the chunk line, buffers the body and forwards it with a Content-Length, nothing is left to desync",
+            "SMUG-CHUNK-EXT-CTRL": "nginx accepts the chunk line, buffers the body and forwards it with a Content-Length, nothing is left to desync",
+            "SMUG-CHUNK-SIZE-TRAILING-OWS": "nginx accepts the chunk line, buffers the body and forwards it with a Content-Length, nothing is left to desync"
+        }
+    }
+}

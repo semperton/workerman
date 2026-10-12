@@ -1,0 +1,25 @@
+# The target of the security tests and nginx in front of it, started by run.php
+# http://127.0.0.1:8080 reaches the target directly, http://127.0.0.1:8081 through nginx
+
+name: semperton-security
+
+services:
+  target:
+    build: { context: .., dockerfile: security/Dockerfile }
+    image: semperton-security/target
+    environment:
+      # probe: the endpoints of Http11Probe, garden: the JSON echo of HTTP Garden
+      ECHO: ${ECHO:-probe}
+      EVENT_LOOP: ${EVENT_LOOP:-event}
+    ports: ['127.0.0.1:8080:8080']
+    ulimits:
+      nofile: 65536
+    stop_grace_period: 5s
+
+  proxy:
+    image: nginx:1.31.6-alpine
+    ports: ['127.0.0.1:8081:8080']
+    volumes: ['./nginx.conf:/etc/nginx/nginx.conf:ro']
+    ulimits:
+      nofile: 65536
+    depends_on: [target]

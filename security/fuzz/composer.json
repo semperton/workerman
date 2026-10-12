@@ -1,0 +1,8 @@
+{
+    "require": {
+        "nikic/php-fuzzer": "dev-master"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

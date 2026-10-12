@@ -4,9 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
-  # the server relies on workerman internals, new releases are tested weekly
+  # the server relies on workerman internals, new releases are tested weekly, so is the security of the server
   schedule:
     - cron: '0 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -67,3 +68,44 @@ jobs:
       - run: composer validate --strict
       - run: composer audit --abandoned=report
       - run: composer check
+
+  # see security/README.md, takes about 20 minutes
+  security:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pcntl, posix
+          coverage: pcov
+          tools: infection:0.35.6
+      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v3
+        with:
+          working-directory: security/fuzz
+      # the corpus grows with every run
+      - uses: actions/cache@v4
+        with:
+          path: security/.cache/corpus
+          key: security-corpus-${{ github.run_id }}
+          restore-keys: security-corpus-
+      - name: Fuzz the request parsing
+        run: |
+          php security/fuzz/seed.php security/.cache/corpus/protocol
+          security/fuzz/vendor/bin/php-fuzzer fuzz security/fuzz/protocol.php security/.cache/corpus/protocol --max-runs 3000000
+      - name: Mutation testing
+        run: infection --threads=max --no-progress --logger-github
+      - name: Http11Probe and slowhttptest
+        run: php security/run.php
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-results
+          path: |
+            security/results/
+            crash-*.txt
+            infection.log
+          if-no-files-found: ignore

@@ -1,0 +1,12 @@
+{
+    "$schema": "https://raw.githubusercontent.com/infection/infection/0.35.6/resources/schema.json",
+    // mutation testing, run weekly by the security job of the CI, see security/README.md
+    "source": {
+        "directories": ["src"]
+    },
+    // the score of 2026-10, raise it as tests improve
+    "minMsi": 82,
+    "logs": {
+        "text": "infection.log"
+    }
+}
