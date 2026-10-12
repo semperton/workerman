@@ -44,6 +44,8 @@ return [
     'chunk size with 0x' => ["{$post}Transfer-Encoding: chunked\r\n\r\n0x4\r\nping\r\n0\r\n\r\n", [400], false],
     'chunk size with space' => ["{$post}Transfer-Encoding: chunked\r\n\r\n 4\r\nping\r\n0\r\n\r\n", [400], false],
     'chunk size overflow' => ["{$post}Transfer-Encoding: chunked\r\n\r\nFFFFFFFFFFFFFFFF1\r\nping\r\n0\r\n\r\n", [400], false],
+    // the size fits into an int, the position after the data doesn't, the body waits for its data until the idle timeout
+    'chunk size near the int limit' => ["{$post}Transfer-Encoding: chunked\r\n\r\n7ffffffffffffffe\r\nping", [408], false],
     'chunk longer than its size' => ["{$post}Transfer-Encoding: chunked\r\n\r\n2\r\npingXX\r\n0\r\n\r\n", [400], false],
     'chunk with bare lf' => ["{$post}Transfer-Encoding: chunked\r\n\r\n4\nping\n0\n\n", [400], false],
     // chunk extensions and trailers read differently by a proxy, e.g. a bare LF as line end ("funky chunks")

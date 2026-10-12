@@ -87,6 +87,7 @@ final class HttpProtocolTest extends TestCase
     }
 
     #[TestWith(["FFFFFFFF\r\n", 'aaaaaaaaaa'], 'large chunk')]
+    #[TestWith(["7ffffffffffffffe\r\n", 'aaaaaaaaaa'], 'chunk size near the int limit')]
     #[TestWith(["1\r\na\r\n0\r\n", "X-Trailer: a\r\n"], 'endless trailers')]
     public function testChunkedTooLarge(string $start, string $more): void
     {
@@ -140,6 +141,7 @@ final class HttpProtocolTest extends TestCase
     #[TestWith(["5;a\r"], 'incomplete line')]
     #[TestWith(["5\r\nhel"], 'incomplete data')]
     #[TestWith(["5\r\nhello\r"], 'incomplete crlf after the data')]
+    #[TestWith(["5\r\nh\r\nl"], 'incomplete data with a crlf')] // the data isn't a chunk line
     public function testIncompleteChunks(string $body): void
     {
         $socket = new SocketConnection();

@@ -158,6 +158,9 @@ final class HttpProtocol
 
             if ($size === 0) {
                 $trailers = true;
+            } elseif ($size > $length - $pos) {
+                // the data is incomplete, its size is limited by the body size, a huge size would overflow the position
+                return true;
             } else {
                 // the data and its CRLF, which workerman checks
                 $pos += $size + 2;
