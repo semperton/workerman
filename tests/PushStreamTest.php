@@ -4,14 +4,9 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Tests;
 
-use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 use RuntimeException;
-use Semperton\Workerman\Internal\ResponseSender;
 use Semperton\Workerman\PushStream;
-use Semperton\Workerman\Tests\Fixtures\SocketConnection;
-use Workerman\Connection\TcpConnection;
 
 final class PushStreamTest extends TestCase
 {
@@ -95,19 +90,5 @@ final class PushStreamTest extends TestCase
 
         self::assertNull($stream->detach());
         self::assertTrue($closed);
-    }
-
-    public function testClosedBeforeSend(): void
-    {
-        $stream = new PushStream();
-        $stream->push('data: a');
-        $stream->close();
-
-        $socket = new SocketConnection();
-        (new ResponseSender(new NullLogger()))->send($socket->connection, new Response(200, [], $stream), 'GET', '1.1', '');
-
-        // aborted, the client must not take the body as complete
-        self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $socket->read());
-        self::assertNotSame(TcpConnection::STATUS_ESTABLISHED, $socket->connection->getStatus());
     }
 }

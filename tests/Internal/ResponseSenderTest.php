@@ -9,7 +9,6 @@ use Nyholm\Psr7\Stream;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Log\NullLogger;
 use RuntimeException;
 use Semperton\Workerman\Internal\HttpProtocol;
 use Semperton\Workerman\Internal\ResponseSender;
@@ -151,19 +150,12 @@ final class ResponseSenderTest extends TestCase
     {
         $socket = new SocketConnection();
         $this->sender()->send($socket->connection, new Response(200, [], 'hello'), 'GET', '1.1', 'close');
-        [$head] = $this->split($socket->read());
-
-        self::assertStringContainsString("\r\nConnection: close", $head);
-        self::assertTrue($socket->ended());
-    }
-
-    public function testCloseImmediately(): void
-    {
-        $socket = new SocketConnection();
-        $this->sender()->send($socket->connection, new Response(200, [], 'hello'), 'GET', '1.1', 'close');
 
         // nothing to wait for, lingering would keep the connection
         self::assertSame(TcpConnection::STATUS_CLOSED, $socket->connection->getStatus());
+        [$head] = $this->split($socket->read());
+        self::assertStringContainsString("\r\nConnection: close", $head);
+        self::assertTrue($socket->ended());
     }
 
     public function testCloseGracefully(): void
@@ -507,6 +499,20 @@ final class ResponseSenderTest extends TestCase
         self::assertSame($onClose, $socket->connection->onClose);
     }
 
+    public function testPushClosedBeforeSend(): void
+    {
+        $stream = new PushStream();
+        $stream->push('data: a');
+        $stream->close();
+
+        $socket = new SocketConnection();
+        $this->sender()->send($socket->connection, new Response(200, [], $stream), 'GET', '1.1', '');
+
+        // aborted, the client must not take the body as complete
+        self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $socket->read());
+        self::assertNotSame(TcpConnection::STATUS_ESTABLISHED, $socket->connection->getStatus());
+    }
+
     public function testPushClosed(): void
     {
         $stream = new PushStream();
@@ -534,7 +540,7 @@ final class ResponseSenderTest extends TestCase
 
     private function sender(): ResponseSender
     {
-        return new ResponseSender(new NullLogger());
+        return new ResponseSender();
     }
 
     /**

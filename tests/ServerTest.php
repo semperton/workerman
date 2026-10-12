@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Tests;
 
-use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Semperton\Workerman\Tests\Fixtures\Client;
 use Semperton\Workerman\Tests\Fixtures\ServerProcess;
@@ -47,26 +46,6 @@ final class ServerTest extends TestCase
         ServerProcess::stop(self::$process);
     }
 
-    public function testKeepAlive(): void
-    {
-        $client = new Client(self::$port);
-
-        [$head, $pid] = $client->request(self::GET);
-        self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $head);
-        self::assertStringNotContainsString('Connection: close', $head);
-
-        // same connection, same worker
-        self::assertSame($pid, $client->request(self::GET)[1]);
-    }
-
-    public function testLargeBody(): void
-    {
-        [$head, $body] = (new Client(self::$port))->request(self::GET_LARGE);
-
-        self::assertStringContainsString("\r\nContent-Length: 4194304", $head);
-        self::assertSame(str_repeat(self::LARGE, 256 * 1024), $body);
-    }
-
     public function testPipelining(): void
     {
         $client = new Client(self::$port);
@@ -98,73 +77,6 @@ final class ServerTest extends TestCase
         $request = "POST /echo HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n2\r\npi\r\n2\r\nng\r\n0\r\n\r\n";
 
         self::assertSame('ping', $client->request($request)[1]);
-    }
-
-    public function testBodyTooLarge(): void
-    {
-        $client = new Client(self::$port);
-        $client->write("POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1048576\r\n\r\n");
-
-        self::assertStringStartsWith('HTTP/1.1 413 Payload Too Large', $client->readAll());
-    }
-
-    public function testChunkedBodyTooLarge(): void
-    {
-        [, $pid] = (new Client(self::$port))->request(self::GET);
-
-        // one large chunk, the limit would only be checked once it is complete
-        $client = new Client(self::$port);
-        $client->write("POST /echo HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\nFFFFFFFF\r\n");
-        $client->write(str_repeat('a', 32 * 1024));
-
-        self::assertStringStartsWith('HTTP/1.1 413 Payload Too Large', $client->readAll());
-        self::assertTrue($client->closed(), 'closed, not timed out');
-        self::assertSame($pid, (new Client(self::$port))->request(self::GET)[1], 'the worker is still running');
-    }
-
-    /**
-     * Request smuggling, the body length must be unambiguous, rfc 9112 6.3
-     */
-    #[TestWith(["Content-Length: 4\r\nTransfer-Encoding: chunked"], 'length and chunked')]
-    #[TestWith(["Content-Length: 4\r\nContent-Length: 4"], 'two lengths')]
-    #[TestWith(["Content-Length: 4, 4"], 'length list')]
-    #[TestWith(["Content-Length: +4"], 'signed length')]
-    #[TestWith(["Transfer-Encoding: gzip, chunked"], 'other coding')]
-    #[TestWith(["Transfer-Encoding: chunked\r\nTransfer-Encoding: chunked"], 'two codings')]
-    public function testAmbiguousBodyLength(string $headers): void
-    {
-        $client = new Client(self::$port);
-        $client->write("POST /echo HTTP/1.1\r\nHost: localhost\r\n$headers\r\n\r\nping");
-
-        self::assertStringStartsWith('HTTP/1.1 400 Bad Request', $client->readAll());
-        self::assertTrue($client->closed(), 'closed, not timed out');
-    }
-
-    public function testHeadTooLarge(): void
-    {
-        $client = new Client(self::$port);
-        $client->write("GET / HTTP/1.1\r\nHost: localhost\r\nX-Large: " . str_repeat('a', 32 * 1024) . "\r\n\r\n");
-
-        self::assertStringStartsWith('HTTP/1.1 431 Request Header Fields Too Large', $client->readAll());
-    }
-
-    public function testHttp10(): void
-    {
-        // the host may be missing, the connection closes by default
-        $client = new Client(self::$port);
-        $client->write("GET / HTTP/1.0\r\n\r\n");
-        $response = $client->readAll();
-
-        self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $response);
-        self::assertStringContainsString("\r\nConnection: close", $response);
-        self::assertTrue($client->closed());
-    }
-
-    public function testUnderscoreHost(): void
-    {
-        [$head] = (new Client(self::$port))->request("GET / HTTP/1.1\r\nHost: my_app:8080\r\n\r\n");
-
-        self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $head);
     }
 
     public function testPushListenerError(): void

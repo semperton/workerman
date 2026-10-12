@@ -61,29 +61,29 @@ final class HttpProtocolTest extends TestCase
      * The package size leaves room for the head, a small head must not allow a larger body
      */
     #[TestWith(["Content-Length: 1025\r\nExpect: 100-continue\r\n\r\n", 0], 'content-length')]
-    #[TestWith(["Content-Length: 1024\r\n\r\n", 1024], 'content-length at the limit')]
     #[TestWith(["Transfer-Encoding: chunked\r\n\r\n401\r\n", 1020], 'chunked')] // an incomplete chunk of 1025 bytes
     public function testBodyLimit(string $head, int $bodyLength): void
     {
-        $socket = new SocketConnection();
-        self::assertNotNull($socket->connection->context);
-        $socket->connection->context->maxBodySize = 1024;
+        $socket = $this->socket(maxBodySize: 1024);
         $buffer = "POST / HTTP/1.1\r\nHost: localhost\r\n" . $head . str_repeat('a', $bodyLength);
-        $length = HttpProtocol::input($buffer, $socket->connection);
 
-        if ($bodyLength === 1024) {
-            self::assertSame(strlen($buffer), $length);
-            self::assertSame('', $socket->read());
-        } else {
-            // no 100 (Continue) for a body that is too large
-            self::assertSame(0, $length);
-            self::assertStringStartsWith('HTTP/1.1 413 ', $socket->read());
-        }
+        self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
+        // no 100 (Continue) for a body that is too large
+        self::assertStringStartsWith('HTTP/1.1 413 ', $socket->read());
     }
 
-    #[TestWith(["FFFFFFFF\r\n"], 'large chunk')]
-    #[TestWith(["1\r\na\r\n0\r\n" . "X-Trailer: a\r\n"], 'endless trailers')]
-    public function testChunkedTooLarge(string $start): void
+    public function testBodyAtTheLimit(): void
+    {
+        $socket = $this->socket(maxBodySize: 1024);
+        $buffer = "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1024\r\n\r\n" . str_repeat('a', 1024);
+
+        self::assertSame(strlen($buffer), HttpProtocol::input($buffer, $socket->connection));
+        self::assertSame('', $socket->read());
+    }
+
+    #[TestWith(["FFFFFFFF\r\n", 'aaaaaaaaaa'], 'large chunk')]
+    #[TestWith(["1\r\na\r\n0\r\n", "X-Trailer: a\r\n"], 'endless trailers')]
+    public function testChunkedTooLarge(string $start, string $more): void
     {
         $socket = new SocketConnection();
         $socket->connection->maxPackageSize = 1024;
@@ -92,7 +92,7 @@ final class HttpProtocolTest extends TestCase
         while (strlen($buffer) <= 1024) {
             self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
             self::assertSame('', $socket->read());
-            $buffer .= $start === "FFFFFFFF\r\n" ? str_repeat('a', 100) : "X-Trailer: a\r\n";
+            $buffer .= $more;
         }
 
         self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
@@ -119,25 +119,29 @@ final class HttpProtocolTest extends TestCase
         self::assertStringStartsWith('HTTP/1.1 400 ', $socket->read());
     }
 
-    #[TestWith(["5;a\r\nhello\r\n0\r\n\r\n", true], 'extension')]
-    #[TestWith(["5;a = b ; c=\"d \\\" e\"\r\nhello\r\n0\r\n\r\n", true], 'extensions with values')]
-    #[TestWith(["5\r\nhello\r\n0\r\nX-A: a b\r\n\r\n", true], 'trailer')]
-    #[TestWith(["5\r\nhello\r\n0\r\n\r\nGET /\x00", true], 'followed by another request')]
-    #[TestWith(["5;a\r", false], 'incomplete line')]
-    #[TestWith(["5\r\nhel", false], 'incomplete data')]
-    #[TestWith(["5\r\nhello\r", false], 'incomplete crlf after the data')]
-    public function testValidChunks(string $body, bool $complete): void
+    #[TestWith(["5;a\r\nhello\r\n0\r\n\r\n"], 'extension')]
+    #[TestWith(["5;a = b ; c=\"d \\\" e\"\r\nhello\r\n0\r\n\r\n"], 'extensions with values')]
+    #[TestWith(["5\r\nhello\r\n0\r\nX-A: a b\r\n\r\n"], 'trailer')]
+    #[TestWith(["5\r\nhello\r\n0\r\n\r\nGET /\x00"], 'followed by another request')]
+    public function testCompleteChunks(string $body): void
     {
         $socket = new SocketConnection();
         $buffer = "POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n" . $body;
-        $length = HttpProtocol::input($buffer, $socket->connection);
 
+        self::assertGreaterThan(0, HttpProtocol::input($buffer, $socket->connection));
         self::assertSame('', $socket->read());
-        if ($complete) {
-            self::assertGreaterThan(0, $length);
-        } else {
-            self::assertSame(0, $length);
-        }
+    }
+
+    #[TestWith(["5;a\r"], 'incomplete line')]
+    #[TestWith(["5\r\nhel"], 'incomplete data')]
+    #[TestWith(["5\r\nhello\r"], 'incomplete crlf after the data')]
+    public function testIncompleteChunks(string $body): void
+    {
+        $socket = new SocketConnection();
+        $buffer = "POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n" . $body;
+
+        self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
+        self::assertSame('', $socket->read(), 'not rejected');
     }
 
     public function testOtherBodiesAreNotValidatedAsChunks(): void
@@ -161,5 +165,17 @@ final class HttpProtocolTest extends TestCase
 
         HttpProtocol::input("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", $socket->connection);
         self::assertFalse(isset($context->headStartedAt));
+    }
+
+    /**
+     * Like HttpServer sets it for its connections
+     */
+    private function socket(int $maxBodySize): SocketConnection
+    {
+        $socket = new SocketConnection();
+        self::assertNotNull($socket->connection->context);
+        $socket->connection->context->maxBodySize = $maxBodySize;
+
+        return $socket;
     }
 }

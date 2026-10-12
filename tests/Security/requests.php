@@ -109,6 +109,9 @@ return [
     'pipelining after a body' => ["{$post}Content-Length: 4\r\n\r\nping{$get}\r\n", [200, 200], true],
     'connection close' => ["{$get}Connection: close\r\n\r\n", [200], false],
     'http/1.0 closes' => ["GET / HTTP/1.0\r\n{$host}\r\n", [200], false],
+    'http/1.0 without host' => ["GET / HTTP/1.0\r\n\r\n", [200], false],
     'body too large' => ["{$post}Content-Length: 1025\r\n\r\n" . str_repeat('a', 1025), [413], false],
     'chunked body too large' => ["{$post}Transfer-Encoding: chunked\r\n\r\n" . str_repeat("100\r\n" . str_repeat('a', 256) . "\r\n", 5) . "0\r\n\r\n", [413], false],
+    // the limit is checked before the chunk is complete
+    'chunk larger than the limit' => ["{$post}Transfer-Encoding: chunked\r\n\r\nFFFFFFFF\r\n" . str_repeat('a', 2048), [413], false],
 ];

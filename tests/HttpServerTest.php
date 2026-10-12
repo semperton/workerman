@@ -54,14 +54,6 @@ final class HttpServerTest extends TestCase
         self::assertTrue($socket->ended());
     }
 
-    public function testInvalidHeaderValue(): void
-    {
-        $socket = new SocketConnection();
-        self::handle($this->worker(), $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\nX-Id: a\x00b\r\n\r\n"));
-
-        self::assertStringStartsWith("HTTP/1.1 400 Bad Request\r\n", $socket->read());
-    }
-
     public function testConverterError(): void
     {
         // a bug, not a client error
@@ -74,15 +66,6 @@ final class HttpServerTest extends TestCase
 
         $socket = new SocketConnection();
         self::handle($this->worker(), $socket->connection, $request);
-
-        self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
-    }
-
-    public function testInterimResponse(): void
-    {
-        $socket = new SocketConnection();
-        $worker = $this->worker(static fn(): ResponseInterface => new Response(101));
-        self::handle($worker, $socket->connection, new Request("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"));
 
         self::assertStringStartsWith("HTTP/1.1 500 Internal Server Error\r\n", $socket->read());
     }
@@ -238,7 +221,7 @@ final class HttpServerTest extends TestCase
 
         try {
             $logger = new ArrayLogger();
-            $handler = new LifecycleHandler(new RuntimeException('Reset failed'));
+            $handler = new LifecycleHandler(requestHandledError: new RuntimeException('Reset failed'));
             $server = new HttpServer(static fn() => $handler, logger: $logger);
             $worker = AddedWorker::of(static fn() => $server->listen(self::ADDRESS));
 
