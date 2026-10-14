@@ -7,6 +7,7 @@ use Semperton\Workerman\Internal\HttpProtocol;
 use Semperton\Workerman\Internal\RequestConverter;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Connection\TcpConnection;
+use Workerman\Protocols\Http;
 use Workerman\Protocols\Http\Request;
 
 /**
@@ -18,6 +19,8 @@ use Workerman\Protocols\Http\Request;
  * PHP-Fuzzer also reports warnings and notices
  * A complete request must be complete only at its length: a prefix that is rejected or complete
  * would be parsed differently when the request arrives in parts (request smuggling)
+ * The rest of the request after the prefix must give the same length, a chunked body is read on from where the prefix stopped
+ * Complete requests must be decoded like by Workerman, chunked bodies are decoded by HttpProtocol
  *
  * @var Config $config
  */
@@ -60,11 +63,31 @@ function parse(string $input, TcpConnection $full, TcpConnection $part, RequestC
         if ($part->getStatus() !== TcpConnection::STATUS_ESTABLISHED) {
             throw new LogicException("The prefix of $cut bytes was rejected, the request is valid");
         }
+        // the rest arrives, a chunked body continues where the prefix stopped
+        $resumedLength = HttpProtocol::input($input, $part);
+        if ($resumedLength !== $length) {
+            throw new LogicException("After a prefix of $cut bytes the request has the length $resumedLength, in one read $length");
+        }
     }
 
     $request = HttpProtocol::decode(substr($input, 0, $length), $full);
     if (!$request instanceof Request) {
         throw new LogicException('Not a request');
+    }
+
+    // the same request as from Workerman, which accepts every request HttpProtocol accepts
+    $workerman = connection();
+    try {
+        $workermanLength = Http::input($input, $workerman);
+        if ($workermanLength !== $length) {
+            throw new LogicException("Workerman's length is $workermanLength, HttpProtocol's $length");
+        }
+        $expected = Http::decode(substr($input, 0, $length), $workerman);
+        if (!$expected instanceof Request || $expected->rawBuffer() !== $request->rawBuffer() || $expected->trailer() !== $request->trailer()) {
+            throw new LogicException('Decoded differently than by Workerman');
+        }
+    } finally {
+        $workerman->destroy();
     }
 
     try {

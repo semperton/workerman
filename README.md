@@ -87,7 +87,7 @@ Process managers send `SIGTERM` by default, so configure `SIGQUIT`, and keep `st
 Requests are converted like PHP-FPM would populate them: server params (`REMOTE_ADDR`, `SERVER_NAME`, `HTTP_*` ...), cookies, query params, form posts and uploaded files.
 Other bodies (e.g. JSON) are left to the application.
 
-- Keep-alive, pipelining, HTTP/1.0 and chunked request bodies are supported.
+- Keep-alive, pipelining, HTTP/1.0 and chunked request bodies are supported. Chunked bodies are read in linear time, every read continues where the previous one stopped.
 - `Expect: 100-continue` is answered right away, clients like curl would otherwise wait a second before sending larger bodies.
 - Invalid requests get a `400`, e.g. a missing or invalid `Host` header, which could change the path of the uri, an invalid header value,
   both `Content-Length` and `Transfer-Encoding`, invalid chunk extensions and trailers, or a bare LF or CR in the head (request smuggling),
@@ -234,9 +234,6 @@ Workerman parses the requests and answers these with a `400`, they are rare behi
 - protocol versions other than HTTP/1.x (RFC 9110 recommends `505`)
 
 Interim responses (`1xx`) and protocol upgrades are not supported, see [WebSockets](#websockets).
-
-Workerman parses a chunked request body again with every read until it is complete, so a body of many small chunks costs CPU time,
-within `maxBodySize`. Behind nginx this doesn't happen, it buffers chunked bodies and forwards them with a `Content-Length`.
 
 ## Versioning
 

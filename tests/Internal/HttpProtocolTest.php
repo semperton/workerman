@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Tests\Internal;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Semperton\Workerman\Internal\HttpProtocol;
 use Semperton\Workerman\Tests\Fixtures\SocketConnection;
 use Workerman\Connection\TcpConnection;
+use Workerman\Protocols\Http;
 use Workerman\Protocols\Http\Request;
 
+use function intdiv;
 use function str_repeat;
 use function strlen;
 use function strpos;
@@ -20,6 +23,7 @@ use function uniqid;
 final class HttpProtocolTest extends TestCase
 {
     private const CONTINUE = "HTTP/1.1 100 Continue\r\n\r\n";
+    private const CHUNKED = "POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n";
 
     #[TestWith(["POST / HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 5\r\n\r\n"], 'expect first')]
     #[TestWith(["POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\nExpect: 100-continue\r\n\r\n"], 'expect last')] // like curl
@@ -117,6 +121,10 @@ final class HttpProtocolTest extends TestCase
     #[TestWith(["5\r\nhello\r\n0\r\nX A: b\r\n\r\n"], 'invalid trailer name')]
     #[TestWith(["5\r\nhello\r\n5\n"], 'lf in an incomplete line')]
     #[TestWith(["5\r\nhello\r\n\x01\r"], 'control character before a cr')]
+    #[TestWith(["5\r\nhelloXY"], 'no crlf after the data')]
+    #[TestWith(["5\r\nhello\rX0\r\n\r\n"], 'no lf after the data')]
+    #[TestWith(["5\r\nhelloX\n0\r\n\r\n"], 'no cr after the data')]
+    #[TestWith(["00000000000000005\r\nhello\r\n0\r\n\r\n"], 'size of 17 digits')] // workerman's limit
     public function testInvalidChunks(string $body): void
     {
         $socket = new SocketConnection();
@@ -150,6 +158,168 @@ final class HttpProtocolTest extends TestCase
 
         self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
         self::assertSame('', $socket->read(), 'not rejected');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function chunkedBodies(): iterable
+    {
+        yield 'chunks' => ["5\r\nhello\r\n1\r\n \r\n5\r\nworld\r\n0\r\n\r\n"];
+        yield 'uppercase hex and leading zeros' => ["00A\r\n0123456789\r\n000\r\n\r\n"];
+        yield 'extensions' => ["5;a = b ; c=\"d \\\" e\"\r\nhello\r\n0;last\r\n\r\n"];
+        yield 'trailers' => ["5\r\nhello\r\n0\r\nX-A: a b\r\nX-B:c:d\r\nX-Empty:\r\n\r\n"];
+        yield 'empty' => ["0\r\n\r\n"];
+        yield 'data like a chunk line' => ["7\r\n0\r\n\r\n\r\n\r\n0\r\n\r\n"];
+        yield 'followed by another request' => ["5\r\nhello\r\n0\r\n\r\nGET / HTTP/1.1\r\n"];
+    }
+
+    /**
+     * Every read continues where the previous one stopped, the request ends where it ends in one read
+     */
+    #[DataProvider('chunkedBodies')]
+    public function testChunksInParts(string $body): void
+    {
+        $buffer = self::CHUNKED . $body;
+        $length = HttpProtocol::input($buffer, (new SocketConnection())->connection);
+        self::assertGreaterThan(0, $length);
+
+        for ($cut = 1; $cut < strlen($buffer); $cut++) {
+            $socket = new SocketConnection();
+            // the head, a part of the body, the rest
+            foreach ([intdiv($cut, 2), $cut] as $part) {
+                if ($part > 0 && $part < $length) {
+                    self::assertSame(0, HttpProtocol::input(substr($buffer, 0, $part), $socket->connection), "part of $part bytes");
+                }
+            }
+            self::assertSame($length, HttpProtocol::input($buffer, $socket->connection), "cut at $cut");
+            self::assertSame('', $socket->read(), "cut at $cut");
+            // closes the socket, workerman keeps connections until they are destroyed
+            $socket->connection->destroy();
+        }
+    }
+
+    #[TestWith(["5\r\nhello\r\n5;\r\nworld\r\n0\r\n\r\n"], 'invalid extension')]
+    #[TestWith(["5\r\nhello\r\n5\r\nworldX\r\n0\r\n\r\n"], 'data longer than its size')]
+    #[TestWith(["5\r\nhello\r\n0\r\nX A: b\r\n\r\n"], 'invalid trailer')]
+    #[TestWith(["5\r\nhello\r\n12345678901234567\r\n"], 'size of 17 digits')]
+    public function testInvalidChunksInParts(string $body): void
+    {
+        $buffer = self::CHUNKED . $body;
+
+        for ($cut = 1; $cut < strlen($buffer); $cut++) {
+            $socket = new SocketConnection();
+            HttpProtocol::input(substr($buffer, 0, $cut), $socket->connection);
+            if ($socket->connection->getStatus() === TcpConnection::STATUS_ESTABLISHED) {
+                self::assertSame(0, HttpProtocol::input($buffer, $socket->connection), "cut at $cut");
+            }
+            self::assertStringStartsWith('HTTP/1.1 400 ', $socket->read(), "cut at $cut");
+            $socket->connection->destroy();
+        }
+    }
+
+    /**
+     * Decoded in linear time, the same request as Workerman's
+     */
+    #[DataProvider('chunkedBodies')]
+    public function testDecodeLikeWorkerman(string $body): void
+    {
+        $buffer = self::CHUNKED . $body;
+        $connection = (new SocketConnection())->connection;
+        $workermanConnection = (new SocketConnection())->connection;
+
+        $length = HttpProtocol::input($buffer, $connection);
+        self::assertSame($length, Http::input($buffer, $workermanConnection));
+
+        $request = HttpProtocol::decode(substr($buffer, 0, $length), $connection);
+        $expected = Http::decode(substr($buffer, 0, $length), $workermanConnection);
+        self::assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(Request::class, $expected);
+
+        self::assertSame($expected->rawBuffer(), $request->rawBuffer());
+        self::assertSame($expected->trailer(), $request->trailer());
+    }
+
+    /**
+     * The request may be exactly as large as the package size
+     */
+    public function testChunkedAtTheLimit(): void
+    {
+        $chunk = self::CHUNKED . "5\r\nhello\r\n";
+        $buffer = $chunk . "0\r\n\r\n";
+
+        // the end of the first chunk is at the limit, the rest may follow
+        $socket = new SocketConnection();
+        $socket->connection->maxPackageSize = strlen($chunk);
+        self::assertSame(0, HttpProtocol::input($chunk, $socket->connection));
+        self::assertSame('', $socket->read());
+
+        $socket = new SocketConnection();
+        $socket->connection->maxPackageSize = strlen($buffer);
+        self::assertSame(strlen($buffer), HttpProtocol::input($buffer, $socket->connection));
+        self::assertSame('', $socket->read());
+
+        $socket->connection->maxPackageSize = strlen($buffer) - 1;
+        self::assertSame(0, HttpProtocol::input($buffer, $socket->connection));
+        self::assertStringStartsWith('HTTP/1.1 413 ', $socket->read());
+    }
+
+    /**
+     * A read continues at the line where the previous one stopped, the lines before it aren't read again
+     */
+    public function testChunksContinueWhereTheyStopped(): void
+    {
+        $invalid = self::CHUNKED . "X\r\n";
+        $buffer = $invalid . "5\r\nhello\r\n0\r\n\r\n";
+
+        $socket = new SocketConnection();
+        /** @psalm-suppress PossiblyNullPropertyAssignment the context is always set */
+        $socket->connection->context->chunkedAt = [strlen($invalid), false];
+        self::assertSame(strlen($buffer), HttpProtocol::input($buffer, $socket->connection));
+
+        // at the end of the buffer
+        $socket = new SocketConnection();
+        /** @psalm-suppress PossiblyNullPropertyAssignment the context is always set */
+        $socket->connection->context->chunkedAt = [strlen($invalid), false];
+        self::assertSame(0, HttpProtocol::input($invalid, $socket->connection));
+        self::assertSame('', $socket->read());
+    }
+
+    /**
+     * A position beyond the buffer belongs to another request, the body is read from its start
+     */
+    public function testChunksFromTheStart(): void
+    {
+        $buffer = self::CHUNKED . "5\r\nhello\r\n0\r\n\r\n";
+
+        $socket = new SocketConnection();
+        /** @psalm-suppress PossiblyNullPropertyAssignment the context is always set */
+        $socket->connection->context->chunkedAt = [strlen($buffer) + 1, true];
+        self::assertSame(strlen($buffer), HttpProtocol::input($buffer, $socket->connection));
+
+        // a new head
+        $socket = new SocketConnection();
+        /** @psalm-suppress PossiblyNullPropertyAssignment the context is always set */
+        $socket->connection->context->chunkedAt = [5, true];
+        HttpProtocol::input('POST / HTTP/1.1', $socket->connection);
+        self::assertSame(strlen($buffer), HttpProtocol::input($buffer, $socket->connection));
+    }
+
+    public function testManySmallChunks(): void
+    {
+        $socket = new SocketConnection();
+        $socket->connection->maxPackageSize = 2 * 1024 * 1024;
+        $chunks = str_repeat("1\r\na\r\n", 160 * 1024);
+        $buffer = self::CHUNKED . $chunks . "0\r\n\r\n";
+
+        for ($read = 64 * 1024; $read < strlen($buffer); $read += 64 * 1024) {
+            self::assertSame(0, HttpProtocol::input(substr($buffer, 0, $read), $socket->connection));
+        }
+        self::assertSame(strlen($buffer), HttpProtocol::input($buffer, $socket->connection));
+
+        $request = HttpProtocol::decode($buffer, $socket->connection);
+        self::assertInstanceOf(Request::class, $request);
+        self::assertSame(str_repeat('a', 160 * 1024), $request->rawBody());
     }
 
     public function testOtherBodiesAreNotValidatedAsChunks(): void

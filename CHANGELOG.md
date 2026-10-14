@@ -25,6 +25,8 @@ First stable release.
 - A chunked request served from Workerman's request cache no longer leaves the connection in chunked mode, the next request was decoded wrong and cached for other clients
 - Requests with a bare LF or CR in the head get a `400`, a proxy could read them as another head (request smuggling)
 - Response headers are validated, invalid names or values get a `500` instead of being sent (response splitting)
+- Chunked request bodies are read in linear time, Workerman searched the rest of the buffer for every chunk and started again with every read,
+  a body of 1 MB in 1-byte chunks kept a worker busy for about 8 seconds
 
 [Unreleased]: https://github.com/semperton/workerman/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/semperton/workerman/releases/tag/v1.0.0

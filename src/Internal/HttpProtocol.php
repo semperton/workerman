@@ -4,31 +4,37 @@ declare(strict_types=1);
 
 namespace Semperton\Workerman\Internal;
 
+use stdClass;
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http;
-use Workerman\Protocols\Http\Response;
 
+use function ctype_xdigit;
 use function hexdec;
+use function implode;
 use function is_int;
+use function ltrim;
 use function microtime;
 use function preg_match;
+use function preg_replace;
 use function str_ends_with;
 use function strlen;
 use function strpos;
+use function strtolower;
 use function substr;
 use function substr_count;
 
 /**
- * Workerman's HTTP protocol, delegated to and extended by:
+ * Workerman's HTTP protocol, extended by:
  * - "Expect: 100-continue", clients like curl wait a second for it before sending larger bodies
  * - the time a request head started to arrive, slow heads are answered with a 408 by ConnectionTimeouts
  * - the body size limit, Workerman only limits the whole request, and chunked bodies once a chunk is complete
- * - the syntax of chunk lines and trailers, Workerman only reads the chunk sizes
  * - the line ends of the head, Workerman splits it at CRLF and keeps a bare LF or CR in the values
+ * - chunked bodies: the syntax of chunk lines and trailers is validated, Workerman only reads the chunk sizes,
+ *   and they are read in linear time, Workerman searches the rest of the buffer for every chunk and starts again with every read
  *
  * @internal
  */
-final class HttpProtocol
+final class HttpProtocol extends Http
 {
     private const CONTINUE = "HTTP/1.1 100 Continue\r\n\r\n";
     // the phrase of the 413 workerman sends for too large bodies of known size, rfc 9110 calls it "Content Too Large"
@@ -42,6 +48,8 @@ final class HttpProtocol
     private const TRAILER_LINE = '/^' . self::TOKEN . ':[\t\x20-\x7e\x80-\xff]*$/D';
     /** control characters are part of no line, e.g. a bare CR or LF */
     private const CONTROL = '~[\x00-\x08\x0a-\x1f\x7f]~';
+    /** Workerman's limit of the digits of a chunk size */
+    private const MAX_SIZE_DIGITS = 16;
 
     /**
      * Called for every read until the request is complete, returns its length or 0 if unknown yet
@@ -58,13 +66,16 @@ final class HttpProtocol
         if ($headEnd === false) {
             /** @psalm-suppress PossiblyNullPropertyFetch, PossiblyNullPropertyAssignment the context is always set */
             $connection->context->headStartedAt ??= microtime(true);
-            return Http::input($buffer, $connection);
+            // a new request, the chunked body read so far belonged to another one
+            /** @psalm-suppress PossiblyNullPropertyFetch the context is always set */
+            unset($connection->context->chunkedAt);
+            return parent::input($buffer, $connection);
         }
 
         /** @psalm-suppress PossiblyNullPropertyFetch the context is always set */
         unset($connection->context->headStartedAt);
 
-        $length = Http::input($buffer, $connection);
+        $length = parent::input($buffer, $connection);
 
         // Http has rejected the request
         if ($connection->getStatus() !== TcpConnection::STATUS_ESTABLISHED) {
@@ -95,12 +106,6 @@ final class HttpProtocol
             return 0;
         }
 
-        // a proxy that reads a chunk line differently, e.g. with a bare LF as line end, sees another end of the body (request smuggling)
-        if (isset($connection->context->chunked) && !self::validChunks($buffer, $headEnd + 4)) {
-            $connection->end(self::BAD_REQUEST, true);
-            return 0;
-        }
-
         // only the head has arrived and the body is announced (0 = chunked)
         if (
             $bufferLength === $headEnd + 4
@@ -113,57 +118,65 @@ final class HttpProtocol
         return $length;
     }
 
-    public static function decode(string $buffer, TcpConnection $connection): mixed
-    {
-        return Http::decode($buffer, $connection);
-    }
-
-    public static function encode(Response|string $response, TcpConnection $connection): string
-    {
-        return Http::encode($response, $connection);
-    }
-
     /**
-     * The chunk lines and trailers received so far, the chunk data is skipped
+     * Called by Http::input() for chunked bodies, returns the length of the request or 0 if unknown yet
+     * Every read continues where the previous one stopped, at the first line not complete yet
+     * A proxy that reads a chunk line differently, e.g. with a bare LF as line end, sees another end of the body (request smuggling)
      */
-    private static function validChunks(string $buffer, int $pos): bool
+    protected static function inputChunked(string $buffer, TcpConnection $connection, int $headerLength): int
     {
-        $trailers = false;
-        $length = strlen($buffer);
+        /** @var stdClass $context */
+        $context = $connection->context;
+        // for decode()
+        $context->chunked = true;
 
-        // the position is past the end while chunk data is incomplete
-        while ($pos <= $length && ($lineEnd = strpos($buffer, "\r\n", $pos)) !== false) {
+        $length = strlen($buffer);
+        /** @var array{int, bool} $state the position of the next line, and if it is a trailer */
+        $state = $context->chunkedAt ?? [$headerLength, false];
+        [$pos, $trailers] = $state[0] <= $length ? $state : [$headerLength, false];
+        unset($context->chunkedAt);
+
+        while (($lineEnd = strpos($buffer, "\r\n", $pos)) !== false) {
             $line = substr($buffer, $pos, $lineEnd - $pos);
-            $pos = $lineEnd + 2;
 
             if ($trailers) {
                 // an empty line ends the body, the next request may follow
                 if ($line === '') {
-                    return true;
+                    $requestLength = $lineEnd + 2;
+                    return $requestLength > $connection->maxPackageSize ? self::reject($connection, self::TOO_LARGE) : $requestLength;
                 }
                 if (preg_match(self::TRAILER_LINE, $line) !== 1) {
-                    return false;
+                    return self::reject($connection, self::BAD_REQUEST);
                 }
+                $pos = $lineEnd + 2;
                 continue;
             }
 
-            if (preg_match(self::CHUNK_LINE, $line, $matches) !== 1) {
-                return false;
+            $size = self::chunkSize($line);
+            if ($size === null) {
+                return self::reject($connection, self::BAD_REQUEST);
             }
 
-            $size = hexdec($matches[1]);
-            if (!is_int($size)) {
-                return false;
-            }
-
+            $dataStart = $lineEnd + 2;
             if ($size === 0) {
                 $trailers = true;
-            } elseif ($size > $length - $pos) {
-                // the data is incomplete, its size is limited by the body size, a huge size would overflow the position
-                return true;
-            } else {
-                // the data and its CRLF, which workerman checks
-                $pos += $size + 2;
+                $pos = $dataStart;
+                continue;
+            }
+
+            // the data and its CRLF are incomplete, the line is read again, a huge size would overflow the position
+            if ($size > $length - $dataStart - 2) {
+                $context->chunkedAt = [$pos, false];
+                return 0;
+            }
+
+            if ($buffer[$dataStart + $size] !== "\r" || $buffer[$dataStart + $size + 1] !== "\n") {
+                return self::reject($connection, self::BAD_REQUEST);
+            }
+
+            $pos = $dataStart + $size + 2;
+            if ($pos > $connection->maxPackageSize) {
+                return self::reject($connection, self::TOO_LARGE);
             }
         }
 
@@ -172,8 +185,87 @@ final class HttpProtocol
         if (str_ends_with($line, "\r")) {
             $line = substr($line, 0, -1);
         }
+        if (preg_match(self::CONTROL, $line) === 1) {
+            return self::reject($connection, self::BAD_REQUEST);
+        }
 
-        return preg_match(self::CONTROL, $line) !== 1;
+        $context->chunkedAt = [$pos, $trailers];
+        return 0;
+    }
+
+    /**
+     * Called by Http::decode() for the chunked bodies validated by inputChunked(), the same request as from Workerman
+     *
+     * @return array{string, array<string, string>} the request with the body as Content-Length, and the trailers
+     */
+    protected static function decodeChunked(string $buffer, int $headerEnd): array
+    {
+        $head = (string) preg_replace('~\r\nTransfer-Encoding[ \t]*:[^\r]*~i', '', substr($buffer, 0, $headerEnd), 1);
+        $parts = [];
+        $trailers = [];
+        $pos = $headerEnd + 4;
+
+        while (($lineEnd = strpos($buffer, "\r\n", $pos)) !== false) {
+            $size = self::chunkSize(substr($buffer, $pos, $lineEnd - $pos));
+            $pos = $lineEnd + 2;
+
+            if ($size === null) {
+                break;
+            }
+
+            if ($size > 0) {
+                $parts[] = substr($buffer, $pos, $size);
+                $pos += $size + 2;
+                continue;
+            }
+
+            // the trailers, until the empty line
+            while (($lineEnd = strpos($buffer, "\r\n", $pos)) !== false && $lineEnd !== $pos) {
+                $colon = strpos($buffer, ':', $pos);
+                if ($colon !== false && $colon < $lineEnd) {
+                    $trailers[strtolower(substr($buffer, $pos, $colon - $pos))] = ltrim(substr($buffer, $colon + 1, $lineEnd - $colon - 1));
+                }
+                $pos = $lineEnd + 2;
+            }
+            break;
+        }
+
+        $body = implode('', $parts);
+
+        return [$head . "\r\nContent-Length: " . strlen($body) . "\r\n\r\n" . $body, $trailers];
+    }
+
+    /**
+     * The size of a valid chunk line, rfc 9112 7.1
+     * Like Workerman, the size is only hex digits up to the extensions, at most 16, a large one has to fit into an int
+     */
+    private static function chunkSize(string $line): ?int
+    {
+        $semicolon = strpos($line, ';');
+        $hex = $semicolon === false ? $line : substr($line, 0, $semicolon);
+
+        if (!ctype_xdigit($hex) || isset($hex[self::MAX_SIZE_DIGITS])) {
+            return null;
+        }
+
+        // the extensions, rare
+        if ($semicolon !== false && preg_match(self::CHUNK_LINE, $line) !== 1) {
+            return null;
+        }
+
+        $size = hexdec($hex);
+
+        return is_int($size) ? $size : null;
+    }
+
+    /**
+     * @return 0 the length is unknown, the connection is closed
+     */
+    private static function reject(TcpConnection $connection, string $response): int
+    {
+        $connection->end($response, true);
+
+        return 0;
     }
 
     /**
