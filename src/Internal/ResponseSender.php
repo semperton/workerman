@@ -43,6 +43,8 @@ final class ResponseSender
     private const BUFFER_LIMIT = 2 * 1024 * 1024;
     private const CHUNK_SIZE = 64 * 1024;
     private const HEADER_NAME = '/^' . HttpProtocol::TOKEN . '$/D';
+    /** names, each after a ':', which no name contains */
+    private const HEADER_NAMES = '/^(?::' . HttpProtocol::TOKEN . ')+$/D';
     // rfc 9110 5.5, 'D' as '$' would match before a final line feed
     private const HEADER_VALUE = '/^[\t\x20-\x7e\x80-\xff]*$/D';
 
@@ -154,24 +156,26 @@ final class ResponseSender
 
         $head = 'HTTP/1.1 ' . $response->getStatusCode() . ' ' . $reasonPhrase . "\r\n";
         $hasDate = false;
+        // validated at once below, a line joined from a value with a line break would look valid
+        $names = '';
+        $values = '';
 
-        foreach ($response->getHeaders() as $name => $values) {
+        foreach ($response->getHeaders() as $name => $headerValues) {
             $name = (string) $name;
             $lowerName = strtolower($name);
             if ($lowerName === 'content-length' || $lowerName === 'transfer-encoding' || $lowerName === 'connection') {
                 continue;
             }
-            if (preg_match(self::HEADER_NAME, $name) !== 1) {
-                throw new UnexpectedValueException("Invalid response header name < $name >");
-            }
             $hasDate = $hasDate || $lowerName === 'date';
-            foreach ($values as $value) {
-                // the value isn't part of the message, it may be large or sensitive
-                if (preg_match(self::HEADER_VALUE, $value) !== 1) {
-                    throw new UnexpectedValueException("Invalid value of the response header < $name >");
-                }
+            $names .= ':' . $name;
+            foreach ($headerValues as $value) {
+                $values .= $value;
                 $head .= $name . ': ' . $value . "\r\n";
             }
+        }
+
+        if ($names !== '' && (preg_match(self::HEADER_NAMES, $names) !== 1 || preg_match(self::HEADER_VALUE, $values) !== 1)) {
+            self::invalidHeader($response);
         }
 
         if (!$hasDate) {
@@ -191,6 +195,32 @@ final class ResponseSender
         }
 
         return $head . "\r\n";
+    }
+
+    /**
+     * Names the invalid header, the value isn't part of the message, it may be large or sensitive
+     *
+     * @throws UnexpectedValueException
+     */
+    private static function invalidHeader(ResponseInterface $response): never
+    {
+        foreach ($response->getHeaders() as $name => $values) {
+            $name = (string) $name;
+            $lowerName = strtolower($name);
+            if ($lowerName === 'content-length' || $lowerName === 'transfer-encoding' || $lowerName === 'connection') {
+                continue;
+            }
+            if (preg_match(self::HEADER_NAME, $name) !== 1) {
+                throw new UnexpectedValueException("Invalid response header name < $name >");
+            }
+            foreach ($values as $value) {
+                if (preg_match(self::HEADER_VALUE, $value) !== 1) {
+                    throw new UnexpectedValueException("Invalid value of the response header < $name >");
+                }
+            }
+        }
+
+        throw new UnexpectedValueException('Invalid response header');
     }
 
     /**

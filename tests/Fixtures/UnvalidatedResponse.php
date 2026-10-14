@@ -19,7 +19,7 @@ final class UnvalidatedResponse implements ResponseInterface
     private readonly Response $response;
 
     /**
-     * @param array<string, list<string>> $headers
+     * @param array<array-key, list<string>> $headers numeric names are integer keys
      */
     public function __construct(
         private readonly array $headers,
@@ -40,7 +40,7 @@ final class UnvalidatedResponse implements ResponseInterface
     public function getHeader(string $name): array
     {
         foreach ($this->headers as $headerName => $values) {
-            if (strcasecmp($headerName, $name) === 0) {
+            if (strcasecmp((string) $headerName, $name) === 0) {
                 return $values;
             }
         }

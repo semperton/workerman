@@ -146,6 +146,46 @@ final class ResponseSenderTest extends TestCase
         yield 'value with nul' => [static fn() => new UnvalidatedResponse(['X-A' => ["a\0b"]])];
         yield 'name with space' => [static fn() => new UnvalidatedResponse(['X A' => ['a']])];
         yield 'name with colon' => [static fn() => new UnvalidatedResponse(['X-A: b' => ['a']])];
+        // the headers are validated at once
+        yield 'empty name first' => [static fn() => new UnvalidatedResponse(['' => ['a'], 'X-B' => ['b']])];
+        yield 'invalid second header' => [static fn() => new UnvalidatedResponse(['X-A' => ['a'], 'X-B' => ["b\n"]])];
+        yield 'invalid second value' => [static fn() => new UnvalidatedResponse(['X-A' => ['a', "b\x7f"]])];
+        yield 'invalid first header' => [static fn() => new UnvalidatedResponse(['X-A' => ["a\n"], 'X-B' => ['b']])];
+        yield 'invalid first value' => [static fn() => new UnvalidatedResponse(['X-A' => ["a\n", 'b']])];
+    }
+
+    /**
+     * @return iterable<string, array{array<array-key, list<string>>, string}>
+     */
+    public static function invalidHeaderMessages(): iterable
+    {
+        // the framing headers are replaced, their values don't matter
+        $framing = ['Content-Length' => ["1\n"], 'Transfer-Encoding' => ["a\n"], 'Connection' => ["b\n"]];
+
+        yield 'value' => [['X-A' => ['a'], ...$framing, 'X-B' => ["b\r\nX-C: c"]], 'Invalid value of the response header < X-B >'];
+        yield 'name' => [['X-A' => ['a'], ...$framing, 'X B' => ['b']], 'Invalid response header name < X B >'];
+        yield 'numeric name' => [['123' => ["a\n"]], 'Invalid value of the response header < 123 >'];
+    }
+
+    /**
+     * @param array<array-key, list<string>> $headers
+     */
+    #[DataProvider('invalidHeaderMessages')]
+    public function testInvalidHeaderMessage(array $headers, string $message): void
+    {
+        $this->expectExceptionObject(new UnexpectedValueException($message));
+
+        $this->sender()->send((new SocketConnection())->connection, new UnvalidatedResponse($headers), 'GET', '1.1', '');
+    }
+
+    public function testInvalidFramingHeader(): void
+    {
+        // replaced by the server's own, like valid ones
+        [$head, $body] = $this->send(new UnvalidatedResponse(['Content-Length' => ["1\r\nX-A: a"], 'X-B' => ['b']]));
+
+        self::assertStringContainsString("\r\nX-B: b\r\n", $head);
+        self::assertStringNotContainsString('X-A', $head);
+        self::assertSame('', $body);
     }
 
     /**
