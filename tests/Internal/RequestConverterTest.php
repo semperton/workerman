@@ -162,6 +162,7 @@ final class RequestConverterTest extends TestCase
         }
     }
 
+    #[TestWith(['a:0', 'a', 0])]
     #[TestWith(['LOCALHOST', 'LOCALHOST', null])]
     #[TestWith(['a:65535', 'a', 65535])]
     #[TestWith(['[::1]:8080', '[::1]', 8080])]
@@ -174,6 +175,7 @@ final class RequestConverterTest extends TestCase
     }
 
     #[TestWith(['PUT', 'application/x-www-form-urlencoded', null], 'not a post')]
+    #[TestWith(['GET', 'application/x-www-form-urlencoded', null], 'a get')]
     #[TestWith(['POST', 'Application/X-WWW-Form-Urlencoded; charset=UTF-8', ['a' => 'b']], 'case-insensitive type')]
     #[TestWith(['POST', 'text/plain', null], 'other type')]
     public function testFormBodyLikeFpm(string $method, string $contentType, ?array $parsedBody): void
@@ -184,6 +186,13 @@ final class RequestConverterTest extends TestCase
 
         self::assertSame($parsedBody, $request->getParsedBody());
         self::assertSame('a=b', (string) $request->getBody());
+    }
+
+    public function testEmptyFormBody(): void
+    {
+        $request = $this->convert("POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\n");
+
+        self::assertNull($request->getParsedBody());
     }
 
     #[TestWith(['a#'])]
