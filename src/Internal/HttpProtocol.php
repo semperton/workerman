@@ -17,6 +17,7 @@ use function microtime;
 use function preg_match;
 use function preg_replace;
 use function str_ends_with;
+use function stripos;
 use function strlen;
 use function strpos;
 use function strtolower;
@@ -270,10 +271,12 @@ final class HttpProtocol extends Http
 
     /**
      * HTTP/1.0 clients don't know 100 (Continue), rfc 9110 10.1.1
+     * The header is looked for first, most requests don't send it
      */
     private static function expectsContinue(string $head): bool
     {
-        return preg_match('~^[^\r]* HTTP/1\.1\r\n~', $head) === 1
-            && preg_match('~\r\nexpect[ \t]*:[ \t]*100-continue[ \t]*(?:\r\n|$)~i', $head) === 1;
+        return stripos($head, '100-continue') !== false
+            && preg_match('~\r\nexpect[ \t]*:[ \t]*100-continue[ \t]*(?:\r\n|$)~i', $head) === 1
+            && preg_match('~^[^\r]* HTTP/1\.1\r\n~', $head) === 1;
     }
 }

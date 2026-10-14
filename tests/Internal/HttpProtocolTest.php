@@ -49,6 +49,7 @@ final class HttpProtocolTest extends TestCase
     #[TestWith(["POST / HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\nContent-Length: 5\r\n\r\nhel"], 'body sent')]
     #[TestWith(["POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n"], 'not expected')]
     #[TestWith(["GET / HTTP/1.1\r\nHost: localhost\r\nExpect: 100-continue\r\n\r\n"], 'no body')]
+    #[TestWith(["POST /100-continue HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\n"], 'in the target only')]
     public function testNoContinue(string $buffer): void
     {
         $socket = new SocketConnection();
