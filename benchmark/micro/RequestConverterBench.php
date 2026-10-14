@@ -47,6 +47,18 @@ final class RequestConverterBench
         $this->converter->convert(new Request(self::GET), $this->connection);
     }
 
+    /**
+     * The conversion and what a typical application reads
+     */
+    public function benchGetAccessed(): void
+    {
+        $request = $this->converter->convert(new Request(self::GET), $this->connection);
+        $request->getUri()->getPath();
+        $request->getHeaderLine('User-Agent');
+        $request->getQueryParams();
+        $request->getCookieParams();
+    }
+
     public function benchFormPost(): void
     {
         $this->converter->convert(new Request(self::POST), $this->connection);

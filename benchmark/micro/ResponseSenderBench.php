@@ -21,12 +21,14 @@ final class ResponseSenderBench
     private ResponseSender $sender;
     private SocketConnection $socket;
     private string $large;
+    private string $twoMegabytes;
 
     public function __construct()
     {
         $this->sender = new ResponseSender();
         $this->socket = new SocketConnection();
         $this->large = str_repeat('0123456789abcdef', 256 * 1024);
+        $this->twoMegabytes = str_repeat('0123456789abcdef', 128 * 1024);
     }
 
     public function benchSmall(): void
@@ -40,6 +42,16 @@ final class ResponseSenderBench
     public function benchLarge(): void
     {
         $this->sender->send($this->socket->connection, new Response(200, [], $this->large), 'GET', '1.1', 'keep-alive');
+        $this->socket->read();
+    }
+
+    /**
+     * Larger than Workerman's send buffer of 1 MB
+     */
+    #[Revs(50)]
+    public function benchTwoMegabytes(): void
+    {
+        $this->sender->send($this->socket->connection, new Response(200, [], $this->twoMegabytes), 'GET', '1.1', 'keep-alive');
         $this->socket->read();
     }
 
