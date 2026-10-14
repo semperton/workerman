@@ -96,7 +96,7 @@ Other bodies (e.g. JSON) are left to the application.
 - Error responses close the connection gracefully, so clients receive them even if they are still sending.
 
 Responses support `HEAD`, `204` / `205` / `304` without a body, and chunked encoding for bodies of unknown size.
-Bodies larger than 2 MB are streamed and wait for the client to read them (backpressure).
+Bodies that don't fit into the send buffer of the connection (1 MB by default) are streamed and wait for the client to read them (backpressure).
 A body that is shorter than its size closes the connection, so the client notices, a longer one is cut.
 
 The handler should render its errors, e.g. with an error middleware. Uncaught exceptions are logged and answered with an empty `500`, so are interim (`1xx`) responses

@@ -9,6 +9,7 @@ use Closure;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
@@ -419,6 +420,32 @@ final class ResponseSenderTest extends TestCase
         self::assertStringContainsString("\r\nConnection: close", $head);
         self::assertSame('hello', $body);
         self::assertTrue($socket->ended());
+    }
+
+    /**
+     * Bodies that fit into the send buffer are sent at once, larger ones streamed, Workerman would copy them with every partial write
+     */
+    #[TestWith([60 * 1024, false], 'fits')]
+    #[TestWith([64 * 1024, true], 'larger than the buffer with the head')]
+    public function testSendBufferSize(int $size, bool $streamed): void
+    {
+        $body = new class (Stream::create(str_repeat('a', $size))) extends StreamDecorator {
+            public int $reads = 0;
+
+            public function read(int $length): string
+            {
+                ++$this->reads;
+                return parent::read($length);
+            }
+        };
+
+        $socket = new SocketConnection();
+        $socket->connection->maxSendBufferSize = 64 * 1024;
+        $this->sender()->send($socket->connection, new Response(200, [], $body), 'GET', '1.1', '');
+        [, $data] = $this->split($socket->read());
+
+        self::assertSame($size, strlen($data));
+        self::assertSame($streamed, $body->reads > 0);
     }
 
     public function testBackpressure(): void

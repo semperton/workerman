@@ -29,7 +29,7 @@ use function trim;
 /**
  * Writes PSR-7 responses to Workerman connections
  *
- * Bodies of known size up to 2 MB are sent at once, larger or unknown sized ones are streamed
+ * Bodies of known size that fit into the send buffer of the connection (1 MB by default) are sent at once, larger or unknown sized ones are streamed
  * and wait for the client to read (backpressure), the connection receives no further requests meanwhile
  * A PushStream body is sent as the application pushes it
  * A body that ends before its announced length closes the connection, so the client notices
@@ -40,7 +40,6 @@ use function trim;
  */
 final class ResponseSender
 {
-    private const BUFFER_LIMIT = 2 * 1024 * 1024;
     private const CHUNK_SIZE = 64 * 1024;
     private const HEADER_NAME = '/^' . HttpProtocol::TOKEN . '$/D';
     /** names, each after a ':', which no name contains */
@@ -119,10 +118,13 @@ final class ResponseSender
             $this->closeBody($body);
         }
 
-        $writable = $connection->getSendBufferQueueSize() < $connection->maxSendBufferSize;
+        $buffered = $connection->getSendBufferQueueSize();
 
-        // fast path, everything fits into the send buffer
-        if ($writable && (!$withBody || ($size !== null && $size <= self::BUFFER_LIMIT))) {
+        // fast path, everything fits into the send buffer, a larger body would be copied again with every partial write
+        if (
+            $buffered < $connection->maxSendBufferSize
+            && (!$withBody || ($size !== null && $buffered + strlen($head) + $size <= $connection->maxSendBufferSize))
+        ) {
             if ($withBody) {
                 $content = $this->contents($body, $size);
                 $keepAlive = $keepAlive && strlen($content) === $size;
